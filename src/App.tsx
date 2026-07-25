@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   NavigationTab, 
   UserProfile, 
@@ -8,7 +8,8 @@ import {
   ResumeAnalysisResult, 
   ResumeVersion, 
   ApplicationCard, 
-  NotificationItem 
+  NotificationItem,
+  TransactionItem 
 } from './types';
 import { 
   initialUserProfile, 
@@ -21,7 +22,16 @@ import {
   sampleNotifications 
 } from './data/mockData';
 
+import { EcosystemProvider, useEcosystem } from './context/EcosystemContext';
+import { AiCareerCoachWidget } from './components/AiCareerCoachWidget';
+import { DailyBriefingModal } from './components/DailyBriefingModal';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
+
 import { LandingPage } from './components/LandingPage';
+import { AuthView } from './components/AuthView';
+import { PricingView } from './components/PricingView';
+import { CheckoutView } from './components/CheckoutView';
+import { TrialBanner } from './components/TrialBanner';
 import { SideNavBar, TopNavBar } from './components/Navigation';
 import { DashboardView } from './components/DashboardView';
 import { ResumeSuiteView } from './components/ResumeSuiteView';
@@ -31,160 +41,298 @@ import { CareerToolsView } from './components/CareerToolsView';
 import { CalendarView } from './components/CalendarView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
+import { SupportView } from './components/SupportView';
+import { ProfileView } from './components/ProfileView';
+import { BillingView } from './components/BillingView';
 import { NotificationsModal } from './components/NotificationsModal';
 
-export default function App() {
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('landing');
-  const [user, setUser] = useState<UserProfile>(initialUserProfile);
-  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
-  const [recommendations] = useState<JobRecommendation[]>(initialJobRecommendations);
-  const [activities, setActivities] = useState<ActivityLog[]>(initialActivityLogs);
-  const [analysis, setAnalysis] = useState<ResumeAnalysisResult>(defaultResumeAnalysis);
-  const [versions, setVersions] = useState<ResumeVersion[]>(defaultResumeVersions);
-  const [applications, setApplications] = useState<ApplicationCard[]>(initialApplications);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(sampleNotifications);
+function MainAppContent() {
+  const {
+    profile,
+    tasks,
+    recommendations,
+    activities,
+    applications,
+    notifications,
+    setIsGlobalSearchOpen,
+    setIsDailyBriefingOpen,
+    uploadResume,
+    applyBulletSuggestion,
+    updateProfileDetails,
+    markAllNotificationsRead
+  } = useEcosystem();
+
+  // Expose global modal triggers for top nav search bar & briefing button
+  useEffect(() => {
+    (window as any).__openGlobalSearch = () => setIsGlobalSearchOpen(true);
+    (window as any).__openDailyBriefing = () => setIsDailyBriefingOpen(true);
+  }, [setIsGlobalSearchOpen, setIsDailyBriefingOpen]);
+
+  // Auth state - default to authenticated
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Subscription Checkout State
+  const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<{
+    name: 'Basic' | 'Pro' | 'Premium';
+    price: number;
+    billingCycle: 'monthly' | 'yearly';
+  }>({
+    name: 'Pro',
+    price: 19,
+    billingCycle: 'monthly'
+  });
+
+  const [analysis] = useState<ResumeAnalysisResult>(defaultResumeAnalysis);
+  const [versions] = useState<ResumeVersion[]>(defaultResumeVersions);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [authRedirectMessage, setAuthRedirectMessage] = useState<string>('');
 
-  // Handlers
-  const handleToggleTask = (id: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-  };
-
-  const handleUpdateUser = (updated: Partial<UserProfile>) => {
-    setUser(prev => ({ ...prev, ...updated }));
-  };
-
-  const handleUploadResume = (fileText: string, fileName: string) => {
-    const newVer: ResumeVersion = {
-      id: Date.now().toString(),
-      versionName: fileName,
-      fileName,
-      uploadedAt: 'Just now',
-      score: 85,
-      content: fileText
-    };
-    setVersions(prev => [newVer, ...prev]);
-    // Optionally trigger analysis
-    setAnalysis(prev => ({
-      ...prev,
-      overallScore: 85,
-      summary: `Analyzed ${fileName}. Resume score improved!`
-    }));
-  };
-
-  const handleApplyBulletSuggestion = (bulletText: string) => {
-    setTasks(prev => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        title: `Applied suggestion: "${bulletText.substring(0, 30)}..."`,
-        tag: 'Applied',
-        tagColor: '#0052ff',
-        completed: true
+  // Sync tab with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as NavigationTab;
+      if (hash && [
+        'landing', 'login', 'signup', 'pricing', 'checkout', 'dashboard', 'resume-suite', 
+        'job-suite', 'interviews', 'career-tools', 'calendar', 
+        'settings', 'admin', 'support', 'profile', 'billing'
+      ].includes(hash)) {
+        handleNavigate(hash, false);
       }
-    ]);
-  };
-
-  const handleUpdateApplicationStatus = (id: string, newStatus: ApplicationCard['status']) => {
-    setApplications(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
-    setActivities(prev => [
-      {
-        id: Date.now().toString(),
-        title: `Updated Application Stage to ${newStatus.toUpperCase()}`,
-        subtitle: 'Just now',
-        timestamp: 'Just now',
-        type: 'application'
-      },
-      ...prev
-    ]);
-  };
-
-  const handleAddApplication = (newApp: Omit<ApplicationCard, 'id'>) => {
-    const created: ApplicationCard = {
-      ...newApp,
-      id: Date.now().toString()
     };
-    setApplications(prev => [created, ...prev]);
+
+    window.addEventListener('hashchange', handleHashChange);
+    if (window.location.hash) {
+      handleHashChange();
+    }
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [isAuthenticated]);
+
+  // Protected route navigation wrapper
+  const handleNavigate = (tab: NavigationTab, updateHash: boolean = true) => {
+    const protectedTabs: NavigationTab[] = [
+      'dashboard', 'resume-suite', 'job-suite', 'interviews', 
+      'career-tools', 'calendar', 'settings', 'admin', 
+      'support', 'profile', 'billing'
+    ];
+
+    if (!isAuthenticated && protectedTabs.includes(tab)) {
+      setAuthRedirectMessage('Please sign in to access your HireFlow AI dashboard.');
+      setCurrentTab('login');
+      if (updateHash) window.location.hash = 'login';
+      return;
+    }
+
+    setAuthRedirectMessage('');
+    setCurrentTab(tab);
+    if (updateHash) {
+      window.location.hash = tab;
+    }
+    setIsMobileMenuOpen(false);
   };
 
-  const handleMarkAllNotificationsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    handleNavigate('landing');
   };
 
-  // If in landing page view, render LandingPage standalone
+  const handleLoginSuccess = (userProfile?: UserProfile) => {
+    setIsAuthenticated(true);
+    if (userProfile) {
+      updateProfileDetails(userProfile);
+    }
+    if (!profile.hasSelectedPlan) {
+      handleNavigate('pricing');
+    } else {
+      handleNavigate('dashboard');
+    }
+  };
+
+  // Subscription Plan Handlers
+  const handleSelectTrial = () => {
+    const now = new Date();
+    const expiry = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    updateProfileDetails({
+      tier: '3-Day Free Trial',
+      subscriptionPlan: '3-Day Free Trial',
+      subscriptionStatus: 'trialing',
+      trialStartDate: now.toISOString(),
+      trialExpiryDate: expiry.toISOString(),
+      hasSelectedPlan: true
+    });
+
+    handleNavigate('dashboard');
+  };
+
+  const handleSelectPaidPlan = (planName: 'Basic' | 'Pro' | 'Premium', price: number, billingCycle: 'monthly' | 'yearly') => {
+    setSelectedCheckoutPlan({ name: planName, price, billingCycle });
+    handleNavigate('checkout');
+  };
+
+  const handlePaymentSuccess = (planName: 'Basic' | 'Pro' | 'Premium', transaction: TransactionItem) => {
+    updateProfileDetails({
+      tier: planName === 'Pro' ? 'Gold Tier' : (planName === 'Premium' ? 'Premium Plan' : 'Basic'),
+      subscriptionPlan: planName,
+      subscriptionStatus: 'active',
+      hasSelectedPlan: true,
+      nextBillingDate: '2026-08-25',
+      transactionHistory: [transaction, ...(profile.transactionHistory || [])]
+    });
+
+    handleNavigate('dashboard');
+  };
+
+  // Render Unauthenticated Views (Landing, Login, Signup)
   if (currentTab === 'landing') {
-    return <LandingPage onStartForFree={() => setCurrentTab('dashboard')} />;
+    return (
+      <LandingPage 
+        onStartForFree={() => handleNavigate('signup')} 
+        onNavigate={handleNavigate}
+      />
+    );
   }
 
+  if (currentTab === 'login' || currentTab === 'signup') {
+    return (
+      <AuthView 
+        mode={currentTab}
+        onNavigate={handleNavigate}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  if (currentTab === 'pricing') {
+    return (
+      <PricingView
+        user={profile}
+        onSelectTrial={handleSelectTrial}
+        onSelectPaidPlan={handleSelectPaidPlan}
+        onNavigate={handleNavigate}
+      />
+    );
+  }
+
+  if (currentTab === 'checkout') {
+    return (
+      <CheckoutView
+        user={profile}
+        selectedPlan={selectedCheckoutPlan}
+        onPaymentSuccess={handlePaymentSuccess}
+        onNavigate={handleNavigate}
+      />
+    );
+  }
+
+  // Render Authenticated App Layout
   return (
-    <div className="bg-[#11131c] text-[#e1e1ef] font-sans min-h-screen flex antialiased">
-      {/* Persistent Side Bar */}
+    <div className="bg-[#11131c] text-[#e1e1ef] font-sans min-h-screen flex antialiased relative">
+      {/* Sidebar Navigation */}
       <SideNavBar
         currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        user={user}
+        onSelectTab={handleNavigate}
+        user={profile}
         notifications={notifications}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onAnalyzeResumeClick={() => setCurrentTab('resume-suite')}
+        onAnalyzeResumeClick={() => handleNavigate('resume-suite')}
+        onLogout={handleLogout}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main Container - md:pl-64 prevents sidebar overlapping! */}
+      <div className="flex-1 flex flex-col min-w-0 md:pl-64">
+        {/* Trial Expiration Banner */}
+        <TrialBanner user={profile} onNavigate={handleNavigate} />
+
         <TopNavBar
           currentTab={currentTab}
-          onSelectTab={setCurrentTab}
-          user={user}
+          onSelectTab={handleNavigate}
+          user={profile}
           notifications={notifications}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
-          onAnalyzeResumeClick={() => setCurrentTab('resume-suite')}
+          onAnalyzeResumeClick={() => handleNavigate('resume-suite')}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
 
         <main className="flex-1 overflow-y-auto">
           {currentTab === 'dashboard' && (
             <DashboardView
-              user={user}
+              user={profile}
               tasks={tasks}
-              onToggleTask={handleToggleTask}
+              onToggleTask={() => {}}
               recommendations={recommendations}
               activities={activities}
-              onNavigateTab={setCurrentTab}
-              onAnalyzeResumeClick={() => setCurrentTab('resume-suite')}
+              onNavigateTab={handleNavigate}
+              onAnalyzeResumeClick={() => handleNavigate('resume-suite')}
             />
           )}
 
           {currentTab === 'resume-suite' && (
             <ResumeSuiteView
-              user={user}
+              user={profile}
               analysis={analysis}
               versions={versions}
-              onUploadResume={handleUploadResume}
-              onApplyBulletSuggestion={handleApplyBulletSuggestion}
+              onUploadResume={uploadResume}
+              onApplyBulletSuggestion={applyBulletSuggestion}
+              onSelectJobHubTab={() => handleNavigate('job-suite')}
             />
           )}
 
           {currentTab === 'job-suite' && (
             <JobSuiteView
               applications={applications}
-              onUpdateStatus={handleUpdateApplicationStatus}
-              onAddApplication={handleAddApplication}
+              onUpdateStatus={() => {}}
+              onAddApplication={() => {}}
               resumeText={versions[0]?.content || ''}
+              user={profile}
+              onUpdateUser={updateProfileDetails}
+              onNavigateTab={handleNavigate}
+              notifications={notifications}
+              onAddNotification={() => {}}
             />
           )}
 
           {currentTab === 'interviews' && (
-            <InterviewsView />
+            <InterviewsView
+              user={profile}
+              applications={applications}
+              versions={versions}
+            />
           )}
 
           {currentTab === 'career-tools' && (
-            <CareerToolsView user={user} />
+            <CareerToolsView user={profile} />
           )}
 
           {currentTab === 'calendar' && (
             <CalendarView />
           )}
 
+          {currentTab === 'profile' && (
+            <ProfileView 
+              user={profile} 
+              onUpdateUser={updateProfileDetails} 
+              onNavigateTab={handleNavigate} 
+            />
+          )}
+
+          {currentTab === 'billing' && (
+            <BillingView 
+              user={profile} 
+              onUpdateUser={updateProfileDetails} 
+            />
+          )}
+
+          {currentTab === 'support' && (
+            <SupportView />
+          )}
+
           {currentTab === 'settings' && (
-            <SettingsView user={user} onUpdateUser={handleUpdateUser} />
+            <SettingsView user={profile} onUpdateUser={updateProfileDetails} />
           )}
 
           {currentTab === 'admin' && (
@@ -193,14 +341,32 @@ export default function App() {
         </main>
       </div>
 
+      {/* Persistent Global Ecosystem Modals & Widgets */}
+      <AiCareerCoachWidget />
+      <DailyBriefingModal />
+      <GlobalSearchModal />
+
       {/* Notifications Drawer */}
       {isNotificationsOpen && (
         <NotificationsModal
           notifications={notifications}
           onClose={() => setIsNotificationsOpen(false)}
-          onMarkAllRead={handleMarkAllNotificationsRead}
+          onMarkAllRead={markAllNotificationsRead}
         />
       )}
     </div>
+  );
+}
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
+
+  return (
+    <EcosystemProvider onNavigateTab={(tab) => {
+      setActiveTab(tab);
+      window.location.hash = tab;
+    }}>
+      <MainAppContent />
+    </EcosystemProvider>
   );
 }

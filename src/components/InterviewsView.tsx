@@ -1,186 +1,262 @@
 import React, { useState } from 'react';
-import { InterviewQuestion } from '../types';
-import { sampleInterviewQuestions } from '../data/mockData';
+import { UserProfile, ApplicationCard, ResumeVersion, InterviewFeedbackReport } from '../types';
+import { InterviewDashboardTab } from './interview/InterviewDashboardTab';
+import { AiMockInterviewTab } from './interview/AiMockInterviewTab';
+import { CompanyPrepTab } from './interview/CompanyPrepTab';
+import { CodingPracticeTab } from './interview/CodingPracticeTab';
+import { HrBehavioralTab } from './interview/HrBehavioralTab';
+import { SystemDesignTab } from './interview/SystemDesignTab';
+import { StudyPlanTab } from './interview/StudyPlanTab';
+import { GamificationProgressTab } from './interview/GamificationProgressTab';
+import { AiCoachDrawer } from './interview/AiCoachDrawer';
+import { ScheduleInterviewModal } from './interview/ScheduleInterviewModal';
 import { 
-  Video, 
-  Play, 
+  BarChart3, 
+  Bot, 
+  Building2, 
+  Code, 
+  MessageSquare, 
+  Layers, 
+  Calendar, 
+  Award, 
   Sparkles, 
-  CheckCircle, 
-  Mic, 
-  Volume2, 
-  HelpCircle, 
-  Award,
-  RefreshCw
+  Plus, 
+  Flame,
+  Zap,
+  Play
 } from 'lucide-react';
 
-export const InterviewsView: React.FC = () => {
-  const [questions] = useState<InterviewQuestion[]>(sampleInterviewQuestions);
-  const [selectedQuestion, setSelectedQuestion] = useState<InterviewQuestion>(questions[0]);
-  const [candidateAnswer, setCandidateAnswer] = useState('');
-  const [isEvaluating, setIsEvaluating] = useState(false);
-  const [evaluation, setEvaluation] = useState<any>(null);
+interface InterviewsViewProps {
+  user?: UserProfile;
+  applications?: ApplicationCard[];
+  versions?: ResumeVersion[];
+}
 
-  const handleEvaluate = async () => {
-    if (!candidateAnswer) return;
-    setIsEvaluating(true);
-    setEvaluation(null);
-    try {
-      const res = await fetch('/api/ai/interview-feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: selectedQuestion.question,
-          answer: candidateAnswer,
-          role: selectedQuestion.role
-        })
-      });
-      const data = await res.json();
-      setEvaluation(data);
-    } catch (err) {
-      setEvaluation({
-        score: 88,
-        starBreakdown: {
-          situation: "Identified high latency issue during peak streaming traffic.",
-          task: "Required sub-100ms API response SLA under load.",
-          action: "Introduced Redis cluster caching and query indexing.",
-          result: "Reduced p99 latency by 42% for 200k active sessions."
-        },
-        strengths: ["Strong technical metrics", "Clear action sequence"],
-        areasToImprove: ["Mention cost or team collaboration impacts briefly."],
-        polishedAnswer: "During a major release, our streaming API experienced a p99 latency spike to 450ms. As lead backend engineer, my goal was restoring sub-100ms response times. I deployed a Redis caching layer for read-heavy payloads and optimized PostgreSQL query indexes, ultimately cutting p99 latency by 42% and keeping cloud infrastructure costs flat."
-      });
-    } finally {
-      setIsEvaluating(false);
+export const InterviewsView: React.FC<InterviewsViewProps> = ({
+  user = {
+    id: 'u1',
+    name: 'Alex Rivera',
+    email: 'alex@hireflow.ai',
+    subscriptionStatus: 'active',
+    planType: 'pro',
+    targetRole: 'Senior Software Engineer'
+  },
+  applications = [
+    {
+      id: 'app_g',
+      jobTitle: 'Senior Frontend Engineer',
+      company: 'Google',
+      location: 'Mountain View, CA',
+      salary: '$180,000 - $240,000',
+      type: 'Full-time',
+      appliedDate: '2 days ago',
+      status: 'interview',
+      interviewTime: 'Tomorrow, 2:00 PM',
+      companyLogo: 'https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?auto=format&fit=crop&q=80&w=100'
+    },
+    {
+      id: 'app_m',
+      jobTitle: 'Full Stack Engineer',
+      company: 'Microsoft',
+      location: 'Redmond, WA',
+      salary: '$170,000 - $220,000',
+      type: 'Full-time',
+      appliedDate: '1 week ago',
+      status: 'interview',
+      interviewTime: 'Friday, 10:00 AM',
+      companyLogo: 'https://images.unsplash.com/photo-1633419461186-7d40a38105ec?auto=format&fit=crop&q=80&w=100'
     }
+  ],
+  versions = []
+}) => {
+  // Navigation Sub-Tabs
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'mock' | 'companies' | 'coding' | 'behavioral' | 'system-design' | 'roadmap' | 'achievements'>('dashboard');
+
+  // AI Coach & Schedule Modals State
+  const [isAiCoachOpen, setIsAiCoachOpen] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
+  // User Gamification & Stats State
+  const [readinessScore, setReadinessScore] = useState(84);
+  const [mocksCompleted, setMocksCompleted] = useState(4);
+  const [codingSolved, setCodingSolved] = useState(22);
+  const [behavioralPracticed, setBehavioralPracticed] = useState(12);
+  const [streakDays, setStreakDays] = useState(7);
+  const [xpPoints, setXpPoints] = useState(720);
+
+  // Weak & Strong Areas
+  const [weakAreas, setWeakAreas] = useState<string[]>(['Dynamic Programming 2D', 'System Design Sharding', 'Memory Allocation Trade-offs']);
+  const [strongAreas, setStrongAreas] = useState<string[]>(['React Architecture', 'STAR Storytelling', 'REST API Idempotency']);
+
+  // Calendar Scheduled Events State
+  const [scheduledEvents, setScheduledEvents] = useState<any[]>([
+    { id: 'evt_1', title: 'Google L5 Technical System Design Round', company: 'Google', date: 'Jul 28, 2026', time: '14:00', type: 'Real Interview' },
+    { id: 'evt_2', title: 'Full Stack AI Mock Interview Session', company: 'HireFlow AI', date: 'Jul 29, 2026', time: '10:00', type: 'Mock Practice' }
+  ]);
+
+  // Handle session completion from AI Mock Interview tab
+  const handleSessionComplete = (report: InterviewFeedbackReport) => {
+    setMocksCompleted(prev => prev + 1);
+    setXpPoints(prev => prev + 150);
+    setReadinessScore(prev => Math.min(98, prev + 3));
+  };
+
+  // Launch Company Mock Interview
+  const handleStartCompanyMock = (companyName: string) => {
+    setActiveTab('mock');
+  };
+
+  const handleAddEvent = (evt: any) => {
+    setScheduledEvents(prev => [evt, ...prev]);
   };
 
   return (
-    <div className="flex-1 p-8 max-w-[1600px] mx-auto w-full">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold font-geist text-[#e1e1ef]">AI Mock Interview Coach</h2>
-        <p className="text-sm text-[#c3c5d9] mt-1">Master technical & behavioral rounds with real-time STAR feedback.</p>
-      </div>
-
-      <div className="grid grid-cols-12 gap-8">
-        {/* Left Column: Question Bank */}
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
-          <h3 className="text-xs font-mono uppercase text-[#c3c5d9] tracking-wider font-bold">Select Question to Practice</h3>
-          
-          <div className="space-y-3">
-            {questions.map((q) => (
-              <div 
-                key={q.id}
-                onClick={() => {
-                  setSelectedQuestion(q);
-                  setCandidateAnswer('');
-                  setEvaluation(null);
-                }}
-                className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                  selectedQuestion.id === q.id 
-                    ? 'bg-[#191b25] border-[#0052ff] ai-gradient-border' 
-                    : 'bg-[#191b25]/50 border-[#434656]/30 hover:border-[#434656]/60'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[#32343f] text-[#b7c4ff]">
-                    {q.type}
-                  </span>
-                  <span className="text-xs font-mono text-[#c3c5d9]">{q.company}</span>
-                </div>
-                <p className="text-sm text-[#e1e1ef] font-medium leading-snug">{q.question}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right Column: Simulator & AI Evaluation */}
-        <div className="col-span-12 lg:col-span-8 flex flex-col gap-6">
-          {/* Question Card */}
-          <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-6">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <span className="text-xs font-mono text-[#4cd7f6] uppercase tracking-wider">{selectedQuestion.company} • {selectedQuestion.role}</span>
-                <h3 className="text-xl font-bold font-geist text-[#e1e1ef] mt-1">{selectedQuestion.question}</h3>
-              </div>
+    <div className="min-h-screen bg-[#0c0e17] text-white p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Platform Header & Navigation Tabs */}
+      <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-4 md:p-6 shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#434656]/20 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-[#0052ff]/20 text-[#4cd7f6] border border-[#0052ff]/40 shadow-lg shadow-[#0052ff]/20">
+              <Bot className="w-6 h-6" />
             </div>
-
-            <div className="bg-[#11131c] border border-[#434656]/20 rounded-lg p-3 text-xs font-mono text-[#c3c5d9] flex items-center gap-2">
-              <HelpCircle className="w-4 h-4 text-[#d0bcff] shrink-0" />
-              <span>Hint: {selectedQuestion.hint}</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-bold font-geist text-white">Interview Intelligence Platform</h1>
+                <span className="px-2.5 py-0.5 rounded-full bg-[#0052ff]/20 text-[#4cd7f6] font-mono text-[10px] font-bold border border-[#0052ff]/30">
+                  AI Engine v3.6
+                </span>
+              </div>
+              <p className="text-xs text-[#c3c5d9] mt-0.5">
+                AI-powered mock interviews, 21+ company guides, coding sandbox, system design & STAR storytelling.
+              </p>
             </div>
           </div>
 
-          {/* Practice Input */}
-          <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-6 flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-mono text-[#c3c5d9] uppercase font-bold">Your Response (Type or Speak)</label>
-              <button 
-                onClick={() => alert("Microphone speech recognition active. Speak clearly into your mic.")}
-                className="text-xs font-mono text-[#4cd7f6] bg-[#007083]/20 border border-[#4cd7f6]/30 px-3 py-1 rounded-full flex items-center gap-1.5 hover:bg-[#007083]/40 cursor-pointer"
-              >
-                <Mic className="w-3.5 h-3.5" /> Speak Answer
-              </button>
-            </div>
-
-            <textarea 
-              rows={5}
-              value={candidateAnswer}
-              onChange={(e) => setCandidateAnswer(e.target.value)}
-              placeholder="Use the STAR method: Situation, Task, Action, Result..."
-              className="w-full bg-[#0c0e17] border border-[#434656]/40 rounded-xl p-4 text-sm text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] font-sans"
-            />
-
-            <button 
-              onClick={handleEvaluate}
-              disabled={isEvaluating || !candidateAnswer}
-              className="bg-[#0052ff] hover:bg-[#0052ff]/90 disabled:opacity-50 text-white font-mono font-bold text-xs py-3 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+          {/* Quick Header Actions */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setIsAiCoachOpen(true)}
+              className="px-4 py-2 bg-[#571bc1]/20 hover:bg-[#571bc1]/30 text-[#d0bcff] rounded-xl text-xs font-mono font-bold border border-[#571bc1]/40 transition-colors flex items-center gap-2 cursor-pointer"
             >
-              {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {isEvaluating ? 'Evaluating Response...' : 'Evaluate Answer with AI Coach'}
+              <Sparkles className="w-4 h-4 text-[#d0bcff]" />
+              Ask AI Coach
+            </button>
+
+            <button
+              onClick={() => setIsScheduleModalOpen(true)}
+              className="px-4 py-2 bg-[#0052ff] hover:bg-[#0052ff]/90 text-white rounded-xl text-xs font-mono font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Schedule Event
             </button>
           </div>
+        </div>
 
-          {/* Feedback Output */}
-          {evaluation && (
-            <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-6 space-y-4 ai-gradient-border">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold font-geist text-[#e1e1ef] flex items-center gap-2">
-                  <Award className="w-5 h-5 text-[#4cd7f6]" /> STAR Evaluation
-                </h3>
-                <span className="text-3xl font-bold font-geist text-[#b7c4ff]">{evaluation.score}/100</span>
-              </div>
+        {/* Sub-Navigation Tabs Bar */}
+        <div className="flex overflow-x-auto gap-2 scrollbar-none pt-1">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+            { id: 'mock', label: 'AI Mock Interview', icon: Play },
+            { id: 'companies', label: 'Company Guides', icon: Building2 },
+            { id: 'coding', label: 'Coding Practice', icon: Code },
+            { id: 'behavioral', label: 'HR & STAR', icon: MessageSquare },
+            { id: 'system-design', label: 'System Design', icon: Layers },
+            { id: 'roadmap', label: 'Study Roadmap', icon: Calendar },
+            { id: 'achievements', label: 'Achievements', icon: Award }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
 
-              {/* STAR Breakdown Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#11131c] p-3 rounded-lg border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#4cd7f6] uppercase font-bold">Situation</span>
-                  <p className="text-xs text-[#c3c5d9] mt-1">{evaluation.starBreakdown?.situation}</p>
-                </div>
-                <div className="bg-[#11131c] p-3 rounded-lg border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#4cd7f6] uppercase font-bold">Task</span>
-                  <p className="text-xs text-[#c3c5d9] mt-1">{evaluation.starBreakdown?.task}</p>
-                </div>
-                <div className="bg-[#11131c] p-3 rounded-lg border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#4cd7f6] uppercase font-bold">Action</span>
-                  <p className="text-xs text-[#c3c5d9] mt-1">{evaluation.starBreakdown?.action}</p>
-                </div>
-                <div className="bg-[#11131c] p-3 rounded-lg border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#4cd7f6] uppercase font-bold">Result</span>
-                  <p className="text-xs text-[#c3c5d9] mt-1">{evaluation.starBreakdown?.result}</p>
-                </div>
-              </div>
-
-              {/* Polished Model Answer */}
-              {evaluation.polishedAnswer && (
-                <div className="bg-[#0c0e17] p-4 rounded-xl border border-[#571bc1]/30">
-                  <h4 className="text-xs font-mono text-[#d0bcff] font-bold uppercase mb-1">Exemplar STAR Answer:</h4>
-                  <p className="text-xs font-mono text-[#e1e1ef] leading-relaxed">{evaluation.polishedAnswer}</p>
-                </div>
-              )}
-            </div>
-          )}
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 py-2.5 rounded-xl font-mono text-xs font-semibold flex items-center gap-2 shrink-0 transition-all cursor-pointer ${
+                  isActive 
+                    ? 'bg-[#0052ff] text-white shadow-lg shadow-[#0052ff]/25' 
+                    : 'bg-[#11131c] text-[#c3c5d9] hover:bg-[#282934] hover:text-white border border-[#434656]/20'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#8d90a2]'}`} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Dynamic View Rendering */}
+      <div>
+        {activeTab === 'dashboard' && (
+          <InterviewDashboardTab
+            user={user}
+            applications={applications}
+            resumeData={versions[0]}
+            readinessScore={readinessScore}
+            mocksCompletedCount={mocksCompleted}
+            codingSolvedCount={codingSolved}
+            behavioralPracticedCount={behavioralPracticed}
+            streakDays={streakDays}
+            xpPoints={xpPoints}
+            weakAreas={weakAreas}
+            strongAreas={strongAreas}
+            upcomingEvents={scheduledEvents}
+            onSelectTab={(tab) => setActiveTab(tab as any)}
+            onStartMockInterview={() => setActiveTab('mock')}
+            onScheduleInterviewModal={() => setIsScheduleModalOpen(true)}
+          />
+        )}
+
+        {activeTab === 'mock' && (
+          <AiMockInterviewTab
+            user={user}
+            resumeData={versions[0]}
+            onSessionComplete={handleSessionComplete}
+          />
+        )}
+
+        {activeTab === 'companies' && (
+          <CompanyPrepTab
+            onStartCompanyMock={handleStartCompanyMock}
+          />
+        )}
+
+        {activeTab === 'coding' && (
+          <CodingPracticeTab />
+        )}
+
+        {activeTab === 'behavioral' && (
+          <HrBehavioralTab />
+        )}
+
+        {activeTab === 'system-design' && (
+          <SystemDesignTab />
+        )}
+
+        {activeTab === 'roadmap' && (
+          <StudyPlanTab />
+        )}
+
+        {activeTab === 'achievements' && (
+          <GamificationProgressTab
+            streakDays={streakDays}
+            xpPoints={xpPoints}
+            readinessScore={readinessScore}
+          />
+        )}
+      </div>
+
+      {/* AI Coach Floating Drawer */}
+      <AiCoachDrawer
+        isOpen={isAiCoachOpen}
+        onClose={() => setIsAiCoachOpen(false)}
+      />
+
+      {/* Schedule Interview Event Modal */}
+      <ScheduleInterviewModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onAddEvent={handleAddEvent}
+      />
     </div>
   );
 };

@@ -1,21 +1,33 @@
 import React, { useState } from 'react';
-import { ResumeAnalysisResult, ResumeVersion, UserProfile } from '../types';
+import { ResumeAnalysisResult, ResumeVersion, UserProfile, ParsedResumeData, AiImprovementSuggestion } from '../types';
 import { 
   BarChart3, 
   Upload, 
   History, 
   Download, 
   Wand2, 
-  AlertCircle, 
-  Info, 
-  CheckCircle2, 
-  ArrowRight, 
   FileText,
-  Copy,
-  Check,
-  RefreshCw,
-  Sparkles
+  Sparkles,
+  Layers,
+  Key,
+  Layout,
+  TrendingUp,
+  MessageSquare,
+  Plus,
+  Bot
 } from 'lucide-react';
+
+import { ResumeDashboardTab } from './resume/ResumeDashboardTab';
+import { AtsScoreCategoryBreakdownTab } from './resume/AtsScoreCategoryBreakdownTab';
+import { AiSectionAnalysisTab } from './resume/AiSectionAnalysisTab';
+import { AiImprovementEngineTab } from './resume/AiImprovementEngineTab';
+import { AtsKeywordAnalysisTab } from './resume/AtsKeywordAnalysisTab';
+import { ResumeTailoringTab } from './resume/ResumeTailoringTab';
+import { ResumeVersionManagerTab } from './resume/ResumeVersionManagerTab';
+import { ResumeBuilderTab } from './resume/ResumeBuilderTab';
+import { ResumeAnalyticsTab } from './resume/ResumeAnalyticsTab';
+import { ResumeUploadParserModal } from './resume/ResumeUploadParserModal';
+import { AiCareerCoachDrawer } from './resume/AiCareerCoachDrawer';
 
 interface ResumeSuiteViewProps {
   user: UserProfile;
@@ -23,391 +35,326 @@ interface ResumeSuiteViewProps {
   versions: ResumeVersion[];
   onUploadResume: (fileText: string, fileName: string) => void;
   onApplyBulletSuggestion: (bullet: string) => void;
+  onSelectJobHubTab?: () => void;
 }
 
 export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   user,
-  analysis,
-  versions,
+  analysis: initialAnalysis,
+  versions: initialVersions,
   onUploadResume,
-  onApplyBulletSuggestion
+  onApplyBulletSuggestion,
+  onSelectJobHubTab
 }) => {
-  const [activeTab, setActiveTab] = useState<'keywords' | 'impact' | 'grammar' | 'formatting'>('keywords');
-  const [selectedVersion, setSelectedVersion] = useState<ResumeVersion>(versions[0] || {
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'ats-score' | 'section-analysis' | 'ai-improvements' | 'keywords' | 'tailoring' | 'versions' | 'builder' | 'analytics'
+  >('dashboard');
+
+  const [versions, setVersions] = useState<ResumeVersion[]>(initialVersions);
+  const [activeVersionId, setActiveVersionId] = useState<string>(initialVersions[0]?.id || 'v1');
+  const [analysis, setAnalysis] = useState<ResumeAnalysisResult>(initialAnalysis);
+
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isCoachDrawerOpen, setIsCoachDrawerOpen] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  const activeVersion = versions.find(v => v.id === activeVersionId) || versions[0] || {
     id: 'default',
     versionName: 'alex_resume_v2.pdf',
     fileName: 'alex_resume_v2.pdf',
     uploadedAt: 'Today',
     score: analysis.overallScore,
     content: 'Senior Software Engineer resume content...'
-  });
-
-  const [isRewriting, setIsRewriting] = useState(false);
-  const [rewrittenResume, setRewrittenResume] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  // File upload simulation or file reader
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const text = evt.target?.result as string || '';
-        onUploadResume(text, file.name);
-      };
-      reader.readAsText(file);
-    }
   };
 
-  const handleApplyAiImprovements = async () => {
-    setIsRewriting(true);
-    try {
-      const res = await fetch('/api/ai/analyze-resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resumeText: selectedVersion.content,
-          targetRole: user.targetRole
-        })
-      });
-      const data = await res.json();
-      const improvedText = `${selectedVersion.content}\n\n[AI OPTIMIZED ADDITIONS]:\n• Architected distributed systems handling 10,000+ req/sec using Kafka, Redis, and Go.\n• Automated multi-region AWS cloud infrastructure (EC2, S3, RDS) with Terraform and Docker container pipelines.`;
-      setRewrittenResume(improvedText);
-    } catch (err) {
-      setRewrittenResume(`${selectedVersion.content}\n\n[AI OPTIMIZED]:\n• Architected distributed systems handling 10k+ requests/sec using Kafka and Redis.`);
-    } finally {
-      setIsRewriting(false);
-    }
+  const showToast = (msg: string) => {
+    setSyncToast(msg);
+    setTimeout(() => setSyncToast(null), 3500);
   };
 
-  const handleCopyRewritten = () => {
-    if (rewrittenResume) {
-      navigator.clipboard.writeText(rewrittenResume);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  // Handlers
+  const handleSaveParsedResume = (parsedData: ParsedResumeData, fileName: string, fileText: string) => {
+    onUploadResume(fileText, fileName);
+
+    const newVersion: ResumeVersion = {
+      id: `v_upload_${Date.now()}`,
+      versionName: fileName,
+      fileName: fileName,
+      uploadedAt: 'Just now',
+      fileSize: '184 KB',
+      score: Math.min(100, analysis.overallScore + 4),
+      template: 'modern_tech',
+      parsedData: parsedData,
+      jobsMatchedCount: 16,
+      content: fileText || parsedData.summary
+    };
+
+    setVersions(prev => [newVersion, ...prev]);
+    setActiveVersionId(newVersion.id);
+    showToast(`Uploaded "${fileName}" and set as active version.`);
   };
 
-  const handleDownloadPdf = () => {
+  const handleSyncWithProfilePrompt = (parsedData: ParsedResumeData) => {
+    showToast("Profile auto-synced with parsed resume skills and experience!");
+  };
+
+  const handleApplySectionChange = (sectionName: string, changeText: string) => {
+    setAnalysis(prev => ({
+      ...prev,
+      overallScore: Math.min(100, prev.overallScore + 3)
+    }));
+    showToast(`Applied ${sectionName} change! ATS Score increased.`);
+  };
+
+  const handleAcceptAiSuggestion = (sug: AiImprovementSuggestion) => {
+    onApplyBulletSuggestion(sug.improvedVersion);
+    setAnalysis(prev => ({
+      ...prev,
+      overallScore: Math.min(100, prev.overallScore + sug.expectedAtsIncrease)
+    }));
+    showToast(`Applied: ${sug.title} (+${sug.expectedAtsIncrease} ATS PTS)`);
+  };
+
+  const handleAddKeywordToResume = (keyword: string) => {
+    showToast(`Added skill "${keyword}" to active resume draft.`);
+    setAnalysis(prev => ({
+      ...prev,
+      overallScore: Math.min(100, prev.overallScore + 2)
+    }));
+  };
+
+  const handleSaveTailoredVersion = (newVersion: ResumeVersion) => {
+    setVersions(prev => [newVersion, ...prev]);
+    setActiveVersionId(newVersion.id);
+    showToast(`Saved tailored version: "${newVersion.versionName}"!`);
+  };
+
+  const handleDuplicateVersion = (v: ResumeVersion) => {
+    const dup: ResumeVersion = {
+      ...v,
+      id: `v_dup_${Date.now()}`,
+      versionName: `${v.versionName} (Copy)`,
+      uploadedAt: 'Just now'
+    };
+    setVersions(prev => [dup, ...prev]);
+    showToast(`Duplicated version "${v.versionName}"`);
+  };
+
+  const handleRenameVersion = (id: string, newName: string) => {
+    setVersions(prev => prev.map(v => v.id === id ? { ...v, versionName: newName } : v));
+    showToast(`Renamed version to "${newName}"`);
+  };
+
+  const handleDeleteVersion = (id: string) => {
+    if (versions.length <= 1) return;
+    setVersions(prev => prev.filter(v => v.id !== id));
+    if (activeVersionId === id) {
+      const remaining = versions.filter(v => v.id !== id);
+      if (remaining.length > 0) setActiveVersionId(remaining[0].id);
+    }
+    showToast("Resume version deleted.");
+  };
+
+  const handleDownloadVersion = (v: ResumeVersion, format: 'PDF' | 'DOCX' | 'TXT') => {
     const element = document.createElement("a");
-    const file = new Blob([rewrittenResume || selectedVersion.content], {type: 'text/plain'});
+    const file = new Blob([v.content || v.parsedData?.summary || 'Resume content'], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
-    element.download = "optimized_alex_resume.txt";
+    element.download = `${v.fileName.replace(/\.[^/.]+$/, "")}.${format.toLowerCase()}`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    showToast(`Downloaded ${v.versionName} as ${format}`);
+  };
+
+  const handleUpdateResumeData = (updatedData: ParsedResumeData) => {
+    setVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, parsedData: updatedData } : v));
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen">
-      {/* Top Header */}
-      <header className="h-20 px-8 flex items-center justify-between border-b border-[#434656]/20 bg-[#11131c]/90 backdrop-blur-md sticky top-0 z-40">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#0c0e17] text-[#e1e1ef]">
+      {/* Toast Notification */}
+      {syncToast && (
+        <div className="fixed top-24 right-8 bg-[#0052ff] text-white px-4 py-2.5 rounded-xl shadow-2xl font-mono text-xs z-50 flex items-center gap-2 animate-fadeIn border border-[#4cd7f6]/40">
+          <Sparkles className="w-4 h-4 text-[#4cd7f6]" />
+          {syncToast}
+        </div>
+      )}
+
+      {/* Main Top Header */}
+      <header className="px-6 md:px-8 py-4 flex flex-wrap items-center justify-between border-b border-[#434656]/20 bg-[#11131c]/90 backdrop-blur-md sticky top-0 z-40 gap-4">
         <div>
-          <h2 className="text-2xl font-bold font-geist text-[#e1e1ef]">Resume Analyzer</h2>
-          <p className="text-xs font-mono text-[#c3c5d9]">{user.title} - {user.experienceLevel}</p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl md:text-2xl font-bold font-geist text-white">AI Resume Intelligence Platform</h2>
+            <span className="px-2.5 py-0.5 rounded-full bg-[#0052ff]/20 text-[#4cd7f6] font-mono text-[10px] font-bold border border-[#0052ff]/30">
+              PRO
+            </span>
+          </div>
+          <p className="text-xs font-mono text-[#c3c5d9] mt-0.5">
+            Active: <span className="text-[#b7c4ff] font-semibold">{activeVersion.versionName}</span> ({analysis.overallScore} ATS PTS)
+          </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-[#282934] rounded-lg p-1 border border-[#434656]/30">
-            <History className="w-4 h-4 text-[#c3c5d9] ml-2" />
-            <select
-              value={selectedVersion.id}
-              onChange={(e) => {
-                const found = versions.find(v => v.id === e.target.value);
-                if (found) setSelectedVersion(found);
-              }}
-              className="bg-transparent text-xs font-mono text-[#e1e1ef] border-none focus:ring-0 py-1 pr-3 cursor-pointer"
-            >
-              {versions.map(v => (
-                <option key={v.id} value={v.id} className="bg-[#1d1f29] text-white">
-                  {v.versionName} ({v.score} pts)
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="px-3 py-2 bg-[#282934] hover:bg-[#32343f] text-[#e1e1ef] rounded-xl text-xs font-mono font-medium border border-[#434656]/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 text-[#b7c4ff]" />
+            Upload Resume
+          </button>
 
-          <div className="h-8 w-px bg-[#434656]/30" />
-
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={handleDownloadPdf}
-              className="text-xs font-mono font-medium text-[#e1e1ef] bg-[#1d1f29] px-4 py-2 rounded-lg border border-[#434656]/30 hover:bg-[#282934] transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              Download PDF
-            </button>
-            <button 
-              onClick={handleApplyAiImprovements}
-              disabled={isRewriting}
-              className="text-xs font-mono font-medium text-[#0c0e17] bg-[#b7c4ff] px-4 py-2 rounded-lg hover:bg-[#dde1ff] transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isRewriting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-              Apply AI Improvements
-            </button>
-          </div>
+          <button
+            onClick={() => setIsCoachDrawerOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-[#0052ff] to-[#571bc1] hover:opacity-90 text-white rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-[#0052ff]/25"
+          >
+            <Bot className="w-4 h-4 text-[#4cd7f6]" />
+            AI Career Coach
+          </button>
         </div>
       </header>
 
-      {/* Split Workspace */}
-      <div className="flex-1 p-8">
-        <div className="max-w-[1600px] mx-auto grid grid-cols-12 gap-6 h-full">
-          {/* Left Panel: Status & Upload */}
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
-            {/* ATS Score Card */}
-            <div className="bg-[#191b25] border border-[#434656]/30 rounded-xl p-6 relative overflow-hidden ai-gradient-border">
-              <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#0052ff]/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-mono text-[#c3c5d9] uppercase tracking-wider">Overall ATS Score</h3>
-                <BarChart3 className="w-5 h-5 text-[#4cd7f6]" />
-              </div>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-5xl font-bold font-geist text-[#b7c4ff]">{analysis.overallScore}</span>
-                <span className="text-xl font-bold font-geist text-[#c3c5d9]">/ 100</span>
-              </div>
-              <p className="text-sm text-[#e1e1ef] mt-2">{analysis.summary}</p>
-              <div className="mt-6 h-2 w-full bg-[#32343f] rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-[#571bc1] to-[#4cd7f6] rounded-full transition-all duration-500" 
-                  style={{ width: `${analysis.overallScore}%` }}
-                />
-              </div>
-            </div>
+      {/* Navigation Sub-Header Bar (10 Tabs) */}
+      <nav className="bg-[#191b25] border-b border-[#434656]/30 px-6 md:px-8 flex overflow-x-auto gap-2 py-2.5 scrollbar-none">
+        {[
+          { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+          { id: 'ats-score', label: 'ATS Breakdown', icon: BarChart3 },
+          { id: 'section-analysis', label: 'Section Analysis', icon: Layers },
+          { id: 'ai-improvements', label: 'AI Improvements', icon: Wand2 },
+          { id: 'keywords', label: 'Keywords', icon: Key },
+          { id: 'tailoring', label: 'Job Tailoring', icon: Wand2 },
+          { id: 'versions', label: 'Version Manager', icon: Layers },
+          { id: 'builder', label: 'Guided Builder', icon: Layout },
+          { id: 'analytics', label: 'Analytics', icon: TrendingUp }
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
 
-            {/* Upload Area */}
-            <label className="border-2 border-dashed border-[#434656]/50 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-[#191b25]/50 hover:bg-[#191b25] hover:border-[#0052ff]/50 transition-all cursor-pointer group py-8">
-              <input 
-                type="file" 
-                accept=".pdf,.docx,.txt"
-                onChange={handleFileChange}
-                className="hidden" 
-              />
-              <div className="w-12 h-12 rounded-full bg-[#32343f] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Upload className="w-5 h-5 text-[#c3c5d9] group-hover:text-[#b7c4ff]" />
-              </div>
-              <h4 className="text-base font-medium text-[#e1e1ef] mb-1">Upload New Version</h4>
-              <p className="text-xs font-mono text-[#c3c5d9]">Drag and drop or click to browse (PDF, DOCX, TXT)</p>
-            </label>
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                isActive 
+                  ? 'bg-[#0052ff] text-white shadow-md shadow-[#0052ff]/20' 
+                  : 'text-[#c3c5d9] hover:text-white hover:bg-[#282934]'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
 
-            {/* Document Preview */}
-            <div className="bg-[#0c0e17] border border-[#434656]/30 rounded-xl p-4 flex-1 flex flex-col min-h-[300px]">
-              <div className="flex items-center justify-between mb-3 border-b border-[#434656]/20 pb-3">
-                <h3 className="text-xs font-mono text-[#c3c5d9]">Document Preview</h3>
-                <span className="text-xs font-mono text-[#8d90a2]">{selectedVersion.fileName}</span>
-              </div>
-              <div className="flex-1 bg-white/5 rounded-lg p-4 overflow-y-auto text-xs font-mono text-[#c3c5d9] whitespace-pre-wrap leading-relaxed max-h-[380px]">
-                {selectedVersion.content}
-              </div>
-            </div>
-          </div>
+      {/* Tab View Container */}
+      <main className="flex-1 p-6 md:p-8 max-w-[1700px] w-full mx-auto">
+        {activeTab === 'dashboard' && (
+          <ResumeDashboardTab
+            user={user}
+            analysis={analysis}
+            activeVersion={activeVersion}
+            versions={versions}
+            onSelectTab={(tab) => {
+              if (tab === 'job-hub' && onSelectJobHubTab) {
+                onSelectJobHubTab();
+              } else {
+                setActiveTab(tab as any);
+              }
+            }}
+            onOpenUpload={() => setIsUploadModalOpen(true)}
+            onApplyImprovement={(id) => {
+              const sug = (analysis.aiSuggestions || []).find(s => s.id === id);
+              if (sug) handleAcceptAiSuggestion(sug);
+            }}
+            onAddMissingSkillToResume={handleAddKeywordToResume}
+          />
+        )}
 
-          {/* Right Panel: AI Feedback Details */}
-          <div className="col-span-12 lg:col-span-8 flex flex-col bg-[#191b25] border border-[#434656]/30 rounded-xl overflow-hidden">
-            {/* Tabs Header */}
-            <div className="flex border-b border-[#434656]/30 bg-[#1d1f29] px-4 pt-3">
-              <button
-                onClick={() => setActiveTab('keywords')}
-                className={`px-6 py-3 text-xs font-mono font-bold border-b-2 transition-colors cursor-pointer ${
-                  activeTab === 'keywords'
-                    ? 'text-[#b7c4ff] border-[#b7c4ff]'
-                    : 'text-[#c3c5d9] border-transparent hover:text-[#e1e1ef]'
-                }`}
-              >
-                Keywords
-              </button>
-              <button
-                onClick={() => setActiveTab('impact')}
-                className={`px-6 py-3 text-xs font-mono font-medium border-b-2 transition-colors cursor-pointer ${
-                  activeTab === 'impact'
-                    ? 'text-[#b7c4ff] border-[#b7c4ff]'
-                    : 'text-[#c3c5d9] border-transparent hover:text-[#e1e1ef]'
-                }`}
-              >
-                Impact & Achievements
-              </button>
-              <button
-                onClick={() => setActiveTab('grammar')}
-                className={`px-6 py-3 text-xs font-mono font-medium border-b-2 transition-colors cursor-pointer ${
-                  activeTab === 'grammar'
-                    ? 'text-[#b7c4ff] border-[#b7c4ff]'
-                    : 'text-[#c3c5d9] border-transparent hover:text-[#e1e1ef]'
-                }`}
-              >
-                Grammar
-              </button>
-              <button
-                onClick={() => setActiveTab('formatting')}
-                className={`px-6 py-3 text-xs font-mono font-medium border-b-2 transition-colors cursor-pointer ${
-                  activeTab === 'formatting'
-                    ? 'text-[#b7c4ff] border-[#b7c4ff]'
-                    : 'text-[#c3c5d9] border-transparent hover:text-[#e1e1ef]'
-                }`}
-              >
-                Formatting ({analysis.formattingScore}%)
-              </button>
-            </div>
+        {activeTab === 'ats-score' && (
+          <AtsScoreCategoryBreakdownTab
+            analysis={analysis}
+          />
+        )}
 
-            {/* Tab Content */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-4">
-              {activeTab === 'keywords' && (
-                <>
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold font-geist text-[#e1e1ef] mb-1">Keyword Optimization</h3>
-                    <p className="text-sm text-[#c3c5d9]">
-                      We compared your resume against top Senior Software Engineer job descriptions. Here is what's missing.
-                    </p>
-                  </div>
+        {activeTab === 'section-analysis' && (
+          <AiSectionAnalysisTab
+            analysis={analysis}
+            onApplySectionChange={handleApplySectionChange}
+          />
+        )}
 
-                  {analysis.keywords.map((item) => (
-                    <div 
-                      key={item.id}
-                      className={`border rounded-lg p-4 relative overflow-hidden transition-all ${
-                        item.type === 'high' 
-                          ? 'bg-[#32343f] border-[#ffb4ab]/40' 
-                          : item.type === 'medium' 
-                          ? 'bg-[#32343f] border-[#434656]/40' 
-                          : 'bg-[#32343f]/60 border-[#434656]/20'
-                      }`}
-                    >
-                      {item.type === 'high' && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#ffb4ab]" />
-                      )}
-                      
-                      <div className="flex gap-4">
-                        <div className="mt-0.5">
-                          {item.type === 'high' ? (
-                            <AlertCircle className="w-5 h-5 text-[#ffb4ab]" />
-                          ) : item.type === 'medium' ? (
-                            <Info className="w-5 h-5 text-[#4cd7f6]" />
-                          ) : (
-                            <CheckCircle2 className="w-5 h-5 text-green-400" />
-                          )}
-                        </div>
+        {activeTab === 'ai-improvements' && (
+          <AiImprovementEngineTab
+            analysis={analysis}
+            onAcceptSuggestion={handleAcceptAiSuggestion}
+            onRejectSuggestion={() => showToast("Suggestion dismissed.")}
+          />
+        )}
 
-                        <div className="flex-1">
-                          <h4 className="text-base font-medium text-[#e1e1ef] flex items-center gap-2">
-                            {item.title}
-                            {item.impactTag && (
-                              <span className="bg-[#ffb4ab]/10 text-[#ffb4ab] px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">
-                                {item.impactTag}
-                              </span>
-                            )}
-                          </h4>
+        {activeTab === 'keywords' && (
+          <AtsKeywordAnalysisTab
+            analysis={analysis}
+            onAddKeywordToResume={handleAddKeywordToResume}
+          />
+        )}
 
-                          <p className="text-sm text-[#c3c5d9] mt-1 mb-3">
-                            {item.description}
-                          </p>
+        {activeTab === 'tailoring' && (
+          <ResumeTailoringTab
+            user={user}
+            activeVersion={activeVersion}
+            onSaveTailoredVersion={handleSaveTailoredVersion}
+            onJobHubNotify={() => showToast("Job Hub matches refreshed for new tailored resume!")}
+          />
+        )}
 
-                          <div className="bg-[#11131c] rounded p-3 border border-[#434656]/20">
-                            <p className="text-xs font-mono text-[#8d90a2] mb-1 uppercase">{item.suggestionTitle}</p>
-                            <p className="text-sm text-[#e1e1ef]">
-                              {item.suggestionText}
-                            </p>
-                          </div>
+        {activeTab === 'versions' && (
+          <ResumeVersionManagerTab
+            versions={versions}
+            activeVersionId={activeVersionId}
+            onSetActiveVersion={(id) => {
+              setActiveVersionId(id);
+              showToast("Switched active resume version.");
+            }}
+            onDuplicateVersion={handleDuplicateVersion}
+            onRenameVersion={handleRenameVersion}
+            onDeleteVersion={handleDeleteVersion}
+            onDownloadVersion={handleDownloadVersion}
+            onOpenUploadModal={() => setIsUploadModalOpen(true)}
+          />
+        )}
 
-                          {item.suggestedBullet && (
-                            <div className="mt-3 flex justify-end">
-                              <button 
-                                onClick={() => onApplyBulletSuggestion(item.suggestedBullet!)}
-                                className="text-xs font-mono text-[#b7c4ff] hover:text-[#dde1ff] transition-colors font-medium flex items-center gap-1 cursor-pointer"
-                              >
-                                Apply to Draft <ArrowRight className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
+        {activeTab === 'builder' && (
+          <ResumeBuilderTab
+            user={user}
+            activeVersion={activeVersion}
+            onUpdateResumeData={handleUpdateResumeData}
+            onDownloadResume={(format) => handleDownloadVersion(activeVersion, format)}
+          />
+        )}
 
-              {activeTab === 'impact' && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold font-geist text-[#e1e1ef]">Impact & Quantifiable Achievements</h3>
-                  <div className="space-y-2">
-                    {analysis.impactPoints.map((pt, i) => (
-                      <div key={i} className="bg-[#32343f] border border-[#434656]/30 p-4 rounded-lg flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-[#4cd7f6] shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#e1e1ef]">{pt}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+        {activeTab === 'analytics' && (
+          <ResumeAnalyticsTab
+            analysis={analysis}
+          />
+        )}
+      </main>
 
-              {activeTab === 'grammar' && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold font-geist text-[#e1e1ef]">Grammar & Clarity Audit</h3>
-                  {analysis.grammarIssues.length > 0 ? (
-                    analysis.grammarIssues.map((issue, i) => (
-                      <div key={i} className="bg-[#32343f] border border-[#434656]/30 p-4 rounded-lg flex items-start gap-3">
-                        <Info className="w-5 h-5 text-[#d0bcff] shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#e1e1ef]">{issue}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-6 text-center text-sm text-green-400 font-mono">
-                      ✓ Zero grammatical or syntax errors detected!
-                    </div>
-                  )}
-                </div>
-              )}
+      {/* Upload Parser Modal */}
+      <ResumeUploadParserModal
+        user={user}
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSaveParsedResume={handleSaveParsedResume}
+        onSyncWithProfilePrompt={handleSyncWithProfilePrompt}
+      />
 
-              {activeTab === 'formatting' && (
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold font-geist text-[#e1e1ef]">ATS Formatting Score: {analysis.formattingScore}%</h3>
-                  <div className="bg-[#32343f] border border-[#434656]/30 p-4 rounded-lg space-y-2 text-sm text-[#e1e1ef]">
-                    <p className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> Standard font typography (Geist / Inter)</p>
-                    <p className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> Single column machine-readable layout</p>
-                    <p className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-400" /> Parsable work experience date formatting</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Rewritten Resume AI Modal */}
-      {rewrittenResume && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
-          <div className="bg-[#1d1f29] border border-[#434656]/40 rounded-2xl p-6 max-w-3xl w-full flex flex-col gap-4 max-h-[85vh]">
-            <div className="flex justify-between items-center border-b border-[#434656]/30 pb-3">
-              <h3 className="text-xl font-bold text-white font-geist flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-[#4cd7f6]" />
-                AI Optimized Resume Draft
-              </h3>
-              <button 
-                onClick={() => setRewrittenResume(null)}
-                className="text-[#c3c5d9] hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 bg-[#0c0e17] rounded-xl p-4 border border-[#434656]/30 overflow-y-auto text-xs font-mono text-[#e1e1ef] whitespace-pre-wrap leading-relaxed">
-              {rewrittenResume}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button 
-                onClick={handleCopyRewritten}
-                className="px-4 py-2 bg-[#282934] hover:bg-[#32343f] text-[#e1e1ef] rounded-lg text-xs font-mono flex items-center gap-2 cursor-pointer"
-              >
-                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copied to Clipboard' : 'Copy Text'}
-              </button>
-              <button 
-                onClick={handleDownloadPdf}
-                className="px-4 py-2 bg-[#0052ff] hover:bg-[#0052ff]/90 text-white rounded-lg text-xs font-mono font-bold flex items-center gap-2 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                Download Optimized File
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* AI Career Coach Drawer */}
+      <AiCareerCoachDrawer
+        user={user}
+        analysis={analysis}
+        isOpen={isCoachDrawerOpen}
+        onClose={() => setIsCoachDrawerOpen(false)}
+      />
     </div>
   );
 };

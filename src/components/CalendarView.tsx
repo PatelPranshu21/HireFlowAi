@@ -1,49 +1,81 @@
-import React from 'react';
-import { Calendar as CalendarIcon, Clock, Video, FileCheck, Plus } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Calendar as CalendarIcon,
+  LayoutDashboard,
+  Sparkles,
+  CheckSquare,
+  FileText,
+  Target,
+  Zap,
+  BarChart3,
+  Share2,
+  Settings
+} from 'lucide-react';
+import { ProductivityDashboardTab } from './productivity/ProductivityDashboardTab';
+import { SmartCalendarTab } from './productivity/SmartCalendarTab';
+import { AiPlannerTab } from './productivity/AiPlannerTab';
+import { TaskManagerTab } from './productivity/TaskManagerTab';
+import { NotesSystemTab } from './productivity/NotesSystemTab';
+import { GoalsTab } from './productivity/GoalsTab';
+import { FocusModeTab } from './productivity/FocusModeTab';
+import { ProductivityAnalyticsTab } from './productivity/ProductivityAnalyticsTab';
+import { CollaborationIntegrationsTab } from './productivity/CollaborationIntegrationsTab';
+import { ProductivitySettingsTab } from './productivity/ProductivitySettingsTab';
 
 export const CalendarView: React.FC = () => {
-  const events = [
-    { id: '1', title: 'Senior Designer Round 2 Interview', company: 'CreativeMinds', date: 'Tomorrow', time: '2:00 PM', type: 'interview' },
-    { id: '2', title: 'EcoTech Take-Home Assessment Due', company: 'EcoTech Solutions', date: 'In 2 days', time: '11:59 PM', type: 'assessment' },
-    { id: '3', title: 'Follow up on Stripe Application', company: 'Stripe', date: 'Friday', time: '10:00 AM', type: 'followup' }
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'calendar' | 'ai-planner' | 'tasks' | 'notes' | 'goals' | 'focus-mode' | 'analytics' | 'integrations' | 'settings'
+  >('dashboard');
+
+  const navTabs = [
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'calendar', label: 'Smart Calendar', icon: CalendarIcon },
+    { id: 'ai-planner', label: 'AI Planner', icon: Sparkles },
+    { id: 'tasks', label: 'Task Manager', icon: CheckSquare },
+    { id: 'notes', label: 'Notes & Prep', icon: FileText },
+    { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'focus-mode', label: 'Focus Mode', icon: Zap },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'integrations', label: 'Integrations', icon: Share2 },
+    { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
   return (
-    <div className="flex-1 p-8 max-w-[1280px] mx-auto w-full">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h2 className="text-3xl font-bold font-geist text-[#e1e1ef]">Career Calendar</h2>
-          <p className="text-sm text-[#c3c5d9] mt-1 font-mono">Keep track of interview slots, take-home tests, and follow-up deadlines.</p>
-        </div>
-        <button 
-          onClick={() => alert("Calendar Sync: Synced with Google Calendar & Outlook")}
-          className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white font-mono text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" /> Add Event / Sync Calendar
-        </button>
+    <div className="flex-1 p-6 md:p-8 max-w-[1400px] mx-auto w-full space-y-6">
+      {/* Sub Navigation Bar */}
+      <div className="bg-[#191b25] border border-[#434656]/30 p-2 rounded-2xl flex items-center gap-1.5 overflow-x-auto no-scrollbar shadow-lg">
+        {navTabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-[#0052ff] text-white shadow-md'
+                  : 'text-[#c3c5d9] hover:text-white hover:bg-[#252836]'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#c3c5d9]'}`} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {events.map((evt) => (
-          <div key={evt.id} className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-6 flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded ${
-                  evt.type === 'interview' ? 'bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/30' : 'bg-[#007083]/20 text-[#4cd7f6]'
-                }`}>
-                  {evt.type}
-                </span>
-                <span className="text-xs font-mono text-[#c3c5d9]">{evt.company}</span>
-              </div>
-              <h3 className="text-base font-bold text-white font-geist mb-2">{evt.title}</h3>
-            </div>
-
-            <div className="pt-4 border-t border-[#434656]/20 flex justify-between items-center text-xs font-mono text-[#4cd7f6]">
-              <span className="flex items-center gap-1.5"><CalendarIcon className="w-3.5 h-3.5" /> {evt.date}</span>
-              <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {evt.time}</span>
-            </div>
-          </div>
-        ))}
+      {/* Active SubTab Component Content */}
+      <div className="transition-all duration-200">
+        {activeTab === 'dashboard' && <ProductivityDashboardTab onSelectSubTab={tab => setActiveTab(tab as any)} />}
+        {activeTab === 'calendar' && <SmartCalendarTab />}
+        {activeTab === 'ai-planner' && <AiPlannerTab />}
+        {activeTab === 'tasks' && <TaskManagerTab />}
+        {activeTab === 'notes' && <NotesSystemTab />}
+        {activeTab === 'goals' && <GoalsTab />}
+        {activeTab === 'focus-mode' && <FocusModeTab />}
+        {activeTab === 'analytics' && <ProductivityAnalyticsTab />}
+        {activeTab === 'integrations' && <CollaborationIntegrationsTab />}
+        {activeTab === 'settings' && <ProductivitySettingsTab />}
       </div>
     </div>
   );

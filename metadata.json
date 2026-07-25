@@ -1,6 +1,11 @@
 {
   "name": "HireFlow AI",
-  "description": "AI-powered career assistant with ATS resume scoring, resume improvement, cover letter generator, job match analysis, application tracker, mock interview coach, career tools, and analytics.",
-  "requestFramePermissions": ["camera", "microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "description": "AI-powered Career & Resume Intelligence Platform with ATS scoring, section optimization, job tailoring, version control, and career coaching.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

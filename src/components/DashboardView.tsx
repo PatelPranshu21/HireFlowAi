@@ -102,21 +102,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Metric 2: Resume Strength */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col justify-between group hover:border-white/20 transition-all shadow-xl">
+        {/* Metric 2: Employability Score */}
+        <div 
+          onClick={() => onNavigateTab('career-tools')}
+          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col justify-between group hover:border-purple-500/40 transition-all cursor-pointer shadow-xl"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-white/40">Resume Strength</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-white/40">Employability Score</span>
             <Award className="w-5 h-5 text-purple-400" />
           </div>
           <div className="flex flex-col gap-2">
-            <span className="text-2xl font-bold font-geist text-white">{user.tier}</span>
+            <span className="text-3xl font-bold font-geist text-white">
+              {user.analytics?.employabilityScore || 88}<span className="text-sm font-normal text-white/40">/100</span>
+            </span>
             <div className="flex gap-1.5">
               <div className="h-1 flex-1 bg-purple-500 rounded-full" />
               <div className="h-1 flex-1 bg-purple-500 rounded-full" />
               <div className="h-1 flex-1 bg-purple-500 rounded-full" />
               <div className="h-1 flex-1 bg-white/10 rounded-full" />
             </div>
-            <span className="text-xs font-mono text-purple-400 font-medium">Top 15% in field</span>
+            <span className="text-xs font-mono text-purple-400 font-medium">Readiness: {user.analytics?.careerReadinessScore || 85}%</span>
           </div>
         </div>
 

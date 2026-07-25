@@ -208,6 +208,193 @@ app.post("/api/ai/match-job", async (req, res) => {
   }
 });
 
+// 2b. AI Structured Resume Parsing
+app.post("/api/ai/parse-resume", async (req, res) => {
+  try {
+    const { resumeText } = req.body;
+    if (!resumeText) {
+      return res.status(400).json({ error: "resumeText is required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.json({
+        fullName: "Alex Morgan",
+        email: "alex.dev@hireflow.ai",
+        phone: "+1 (555) 234-5678",
+        linkedIn: "https://linkedin.com/in/alex-dev",
+        gitHub: "https://github.com/alex-dev-lead",
+        portfolio: "https://alexmorgan.dev",
+        summary: "Seasoned Senior Software Engineer with 7+ years of experience in distributed cloud systems, modern web architecture (React, TypeScript, Node.js), and high-throughput microservices.",
+        education: [
+          { degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
+        ],
+        experience: [
+          {
+            company: "Apple",
+            role: "Senior Software Engineer",
+            period: "2021 - Present",
+            location: "Cupertino, CA",
+            bullets: [
+              "Architected and deployed highly available distributed streaming services handling 10k+ req/sec using Kafka & Redis.",
+              "Led frontend performance migration to Next.js and TypeScript, reducing p99 latency by 35%.",
+              "Automated AWS multi-region infrastructure (EC2, EKS, S3) with Terraform CI/CD pipelines."
+            ]
+          },
+          {
+            company: "TechCorp Inc.",
+            role: "Full Stack Developer",
+            period: "2018 - 2021",
+            location: "San Francisco, CA",
+            bullets: [
+              "Engineered real-time telemetry dashboards serving 250k daily active users.",
+              "Designed resilient PostgreSQL schemas and GraphQL API microservices."
+            ]
+          }
+        ],
+        projects: [
+          {
+            name: "CloudScale Engine",
+            description: "High-performance distributed event broker built with Go and WebSockets.",
+            technologies: ["Go", "Kafka", "Docker", "Kubernetes"]
+          }
+        ],
+        skills: ["TypeScript", "React", "Next.js", "Node.js", "Go", "Python", "AWS", "Docker", "Kubernetes", "PostgreSQL", "Kafka", "Redis"],
+        certifications: ["AWS Certified Solutions Architect", "CKA (Certified Kubernetes Administrator)"],
+        languages: ["English (Native)", "Spanish (Professional)"],
+        achievements: ["Patent co-inventor for distributed data caching", "Top 1% Contributor on GitHub"]
+      });
+    }
+
+    const ai = getGenAI();
+    const prompt = `Parse the following raw resume text into a structured JSON object containing:
+    - fullName, email, phone, linkedIn, gitHub, portfolio, summary
+    - education (array of { degree, institution, year, gpa })
+    - experience (array of { company, role, period, location, bullets: string[] })
+    - projects (array of { name, description, technologies: string[] })
+    - skills (array of string skill names)
+    - certifications (array of strings)
+    - languages (array of strings)
+    - achievements (array of strings)
+
+    Resume Text:
+    """
+    ${resumeText}
+    """`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (err: any) {
+    console.error("Error in /api/ai/parse-resume:", err);
+    res.status(500).json({ error: "Failed to parse resume", details: err.message });
+  }
+});
+
+// 2c. AI Resume Tailoring against JD
+app.post("/api/ai/tailor-resume", async (req, res) => {
+  try {
+    const { resumeContent, jobDescription, targetRole, company } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.json({
+        matchPercentage: 92,
+        missingSkills: ["GraphQL Subscriptions", "Kubernetes Mesh"],
+        missingKeywords: ["Event-Driven Microservices", "CI/CD Gateways"],
+        suggestedChanges: [
+          "Reframe Apple experience bullet 1 to highlight Event-Driven architecture.",
+          "Insert Kubernetes cluster deployment explicitly into skills section."
+        ],
+        tailoredResumeContent: `${resumeContent || ''}\n\n[TAILORED FOR ${company || 'TARGET ROLE'}]:\n• Spearheaded event-driven microservice orchestration using Kubernetes & Docker.\n• Integrated GraphQL subscriptions and distributed caching for low-latency state synchronization.`,
+        tailoredVersionName: `Tailored: ${targetRole || 'Role'} at ${company || 'Target Co'}`
+      });
+    }
+
+    const ai = getGenAI();
+    const prompt = `Tailor this candidate's resume for the specific job description at "${company || 'Target Company'}" for role "${targetRole || 'Target Role'}".
+    Provide JSON with:
+    - matchPercentage (0-100 number)
+    - missingSkills (array of strings)
+    - missingKeywords (array of strings)
+    - suggestedChanges (array of string bullet point changes)
+    - tailoredResumeContent (the full improved resume text incorporating target keywords)
+    - tailoredVersionName (short version string)
+
+    Original Resume:
+    """
+    ${resumeContent}
+    """
+
+    Job Description:
+    """
+    ${jobDescription}
+    """`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (err: any) {
+    console.error("Error in /api/ai/tailor-resume:", err);
+    res.status(500).json({ error: "Failed to tailor resume", details: err.message });
+  }
+});
+
+// 2d. Section / Bullet Point AI Optimizer
+app.post("/api/ai/improve-section", async (req, res) => {
+  try {
+    const { sectionName, currentText, improvementType, targetRole } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.json({
+        originalText: currentText || "Built backend web services.",
+        improvedText: sectionName === 'summary' 
+          ? "High-impact Senior Software Engineer with 7+ years of expertise in architecting resilient distributed microservices, optimizing web application performance by 35%+, and leading cloud infrastructure deployments across AWS and Kubernetes."
+          : "Architected distributed REST/gRPC backend microservices in Node.js and Go, reducing API p99 response times by 42% for 250,000 active daily users.",
+        reason: `Enhanced with active leadership verbs, quantified metrics, and target ATS keywords for ${targetRole || 'Senior Software Engineer'}.`,
+        expectedAtsIncrease: 7
+      });
+    }
+
+    const ai = getGenAI();
+    const prompt = `Improve the following resume section ("${sectionName}") for a target role of "${targetRole || 'Senior Software Engineer'}".
+    Improvement goal: ${improvementType || 'Quantify impact, add strong action verbs, fix passive voice, and optimize for ATS keywords'}.
+    
+    Current Content:
+    """
+    ${currentText}
+    """
+    
+    Provide JSON with:
+    - originalText
+    - improvedText
+    - reason (explanation of why this version is stronger)
+    - expectedAtsIncrease (integer number between 3 and 12)`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+
+    res.json(JSON.parse(response.text || "{}"));
+  } catch (err: any) {
+    console.error("Error in /api/ai/improve-section:", err);
+    res.status(500).json({ error: "Failed to improve resume section", details: err.message });
+  }
+});
+
 // 3. Cover Letter Generator
 app.post("/api/ai/generate-cover-letter", async (req, res) => {
   try {

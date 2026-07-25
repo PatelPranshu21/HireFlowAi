@@ -1,19 +1,33 @@
 import React, { useState } from 'react';
+import { NavigationTab } from '../types';
 import { ShaderCanvas } from './ShaderCanvas';
-import { Sparkles, ArrowRight, Play, CheckCircle2, Bot, FileCheck, Target, Video } from 'lucide-react';
+import { 
+  Sparkles, 
+  ArrowRight, 
+  CheckCircle2, 
+  FileCheck, 
+  Target, 
+  Video, 
+  Zap, 
+  ShieldCheck, 
+  Layers, 
+  BookOpen,
+  Building2,
+  TrendingUp,
+  UserCheck
+} from 'lucide-react';
 
 interface LandingPageProps {
   onStartForFree: () => void;
+  onNavigate: (tab: NavigationTab) => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
-  const [showDemoModal, setShowDemoModal] = useState(false);
-
+export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavigate }) => {
   return (
     <div className="bg-[#050505] text-[#F9FAFB] font-sans antialiased min-h-screen flex flex-col relative overflow-x-hidden select-none">
       {/* Top Navigation Bar */}
-      <nav className="flex items-center justify-between px-10 py-6 border-b border-white/10 bg-[#050505]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={onStartForFree}>
+      <nav className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-white/10 bg-[#050505]/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate('landing')}>
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
             <div className="w-4 h-4 bg-white rotate-45" />
           </div>
@@ -24,18 +38,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
           <a href="#features" className="hover:text-white transition-colors">Platform</a>
           <a href="#solutions" className="hover:text-white transition-colors">Solutions</a>
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-          <a href="#about" className="hover:text-white transition-colors">Resources</a>
+          <a href="#resources" className="hover:text-white transition-colors">Resources</a>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button 
-            onClick={onStartForFree}
+            onClick={() => onNavigate('login')}
             className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white cursor-pointer transition-colors"
           >
             Sign In
           </button>
           <button 
-            onClick={onStartForFree}
+            onClick={() => onNavigate('signup')}
             className="px-5 py-2 text-sm font-semibold bg-white text-black rounded-full hover:bg-white/90 transition-all shadow-lg shadow-white/5 cursor-pointer active:scale-95"
           >
             Get Started
@@ -44,7 +58,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative flex-1 flex flex-col md:flex-row px-10 py-12 gap-10 max-w-[1280px] mx-auto w-full items-center">
+      <section className="relative flex-1 flex flex-col md:flex-row px-6 md:px-10 py-16 gap-10 max-w-[1280px] mx-auto w-full items-center">
         {/* Animated Shader WebGL Background */}
         <div className="absolute inset-0 z-0 pointer-events-none opacity-40">
           <ShaderCanvas className="w-full h-full" />
@@ -69,7 +83,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
 
           <div className="flex flex-wrap items-center gap-4">
             <button 
-              onClick={onStartForFree}
+              onClick={() => onNavigate('signup')}
               className="px-8 py-4 bg-blue-600 rounded-xl font-semibold text-white shadow-xl shadow-blue-500/20 hover:bg-blue-500 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               Upload Resume — Free
@@ -89,7 +103,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
 
         {/* Right Column: Visual Mockup Widgets */}
         <div className="w-full md:w-1/2 relative min-h-[420px] flex items-center justify-center z-10">
-          {/* Dashboard Widget: Match Score */}
           <div className="w-full max-w-[380px] bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl z-20">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -117,7 +130,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
             </div>
           </div>
 
-          {/* Abstract Blue Decoration Glow */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-blue-600/10 rounded-full blur-[100px] pointer-events-none" />
         </div>
       </section>
@@ -139,7 +151,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
       </section>
 
       {/* Feature Showcase Grid */}
-      <section id="features" className="py-24 px-10 max-w-[1280px] mx-auto w-full">
+      <section id="features" className="py-24 px-6 md:px-10 max-w-[1280px] mx-auto w-full">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-[10px] uppercase tracking-widest text-blue-400 font-bold mb-2">Platform Capabilities</p>
           <h2 className="text-3xl md:text-5xl font-light tracking-tight font-geist text-white mb-4">
@@ -195,6 +207,147 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
         </div>
       </section>
 
+      {/* Solutions Section */}
+      <section id="solutions" className="py-24 px-6 md:px-10 border-t border-white/10 bg-[#08080a]">
+        <div className="max-w-[1280px] mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <p className="text-[10px] uppercase tracking-widest text-purple-400 font-bold mb-2">Target Solutions</p>
+            <h2 className="text-3xl md:text-5xl font-light tracking-tight font-geist text-white mb-4">
+              Tailored for Every Stage of Career Transition
+            </h2>
+            <p className="text-white/50 text-base">
+              Whether you are an experienced lead, a career switcher, or a new grad, HireFlow AI adapts to your target.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="bg-white/5 border border-white/10 p-8 rounded-3xl space-y-4">
+              <Building2 className="w-8 h-8 text-blue-400" />
+              <h3 className="text-xl font-bold font-geist text-white">Senior & Principal Tech Talent</h3>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Highlight high-scale distributed systems architecture, team mentorship metrics, and p99 performance optimization.
+              </p>
+            </div>
+            <div className="bg-white/5 border border-white/10 p-8 rounded-3xl space-y-4">
+              <TrendingUp className="w-8 h-8 text-purple-400" />
+              <h3 className="text-xl font-bold font-geist text-white">Career Pivoters & Switchers</h3>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Translate non-traditional industry experience into relevant engineering domain keywords that pass machine ATS filters.
+              </p>
+            </div>
+            <div className="bg-white/5 border border-white/10 p-8 rounded-3xl space-y-4">
+              <UserCheck className="w-8 h-8 text-green-400" />
+              <h3 className="text-xl font-bold font-geist text-white">New Graduates & Early Career</h3>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Format open-source contributions, hackathons, and capstone engineering projects into high-impact bullet points.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="py-24 px-6 md:px-10 border-t border-white/10 bg-[#050505]">
+        <div className="max-w-[1280px] mx-auto text-center">
+          <div className="max-w-2xl mx-auto mb-16">
+            <p className="text-[10px] uppercase tracking-widest text-blue-400 font-bold mb-2">Transparent Pricing</p>
+            <h2 className="text-3xl md:text-5xl font-light tracking-tight font-geist text-white mb-4">
+              Start Free, Upgrade when Ready
+            </h2>
+            <p className="text-white/50 text-base">No credit card required to analyze your first resume.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">Free Plan</h3>
+                <p className="text-xs text-white/50 mb-6">Essential tools for job seekers.</p>
+                <span className="text-4xl font-bold text-white font-geist">$0</span>
+                <ul className="mt-6 space-y-3 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 3 ATS Resume Audits</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Basic Keyword Missing Alerts</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 10 Kanban Tracker Slots</li>
+                </ul>
+              </div>
+              <button 
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
+              >
+                Sign Up Free
+              </button>
+            </div>
+
+            <div className="bg-white/5 border border-blue-500 rounded-3xl p-8 flex flex-col justify-between relative ai-gradient-border">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase">Most Popular</span>
+              <div>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">Gold Tier</h3>
+                <p className="text-xs text-white/50 mb-6">For active job seekers looking for speed.</p>
+                <span className="text-4xl font-bold text-white font-geist">$19 <span className="text-xs text-white/50 font-normal">/mo</span></span>
+                <ul className="mt-6 space-y-3 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Unlimited Resume Audits</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 1-Click Bullet AI Rewriter</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> AI Cover Letter Studio</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 20 AI Mock Interviews / mo</li>
+                </ul>
+              </div>
+              <button 
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold cursor-pointer shadow-lg shadow-blue-500/20"
+              >
+                Get Gold Access
+              </button>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">Premium Plan</h3>
+                <p className="text-xs text-white/50 mb-6">Complete career acceleration suite.</p>
+                <span className="text-4xl font-bold text-white font-geist">$39 <span className="text-xs text-white/50 font-normal">/mo</span></span>
+                <ul className="mt-6 space-y-3 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Everything in Gold Tier</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Unlimited AI Mock Interviews</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> LinkedIn Headline & Strategy</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Salary Counteroffer Coach</li>
+                </ul>
+              </div>
+              <button 
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
+              >
+                Start Premium
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Resources Section */}
+      <section id="resources" className="py-20 px-6 md:px-10 border-t border-white/10 bg-[#08080a]">
+        <div className="max-w-[1280px] mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <p className="text-[10px] uppercase tracking-widest text-sky-400 font-bold mb-2">Knowledge Base</p>
+            <h2 className="text-3xl font-light font-geist text-white">Career Engineering Resources</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-white/70">
+            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-2">
+              <BookOpen className="w-5 h-5 text-sky-400" />
+              <h4 className="font-bold text-white text-sm font-geist">2026 ATS Algorithm Guide</h4>
+              <p>Learn how modern Applicant Tracking Systems parse complex PDF layouts and tables.</p>
+            </div>
+            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-2">
+              <BookOpen className="w-5 h-5 text-purple-400" />
+              <h4 className="font-bold text-white text-sm font-geist">STAR Framework Cheatsheet</h4>
+              <p>Master behavioral interview questions at Tier-1 tech companies with metrics-focused answers.</p>
+            </div>
+            <div className="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-2">
+              <BookOpen className="w-5 h-5 text-green-400" />
+              <h4 className="font-bold text-white text-sm font-geist">Tech Salary Benchmarks</h4>
+              <p>Compare total compensation packages for Software, Product, and Design roles across regions.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Feature Footer Grid */}
       <footer className="grid grid-cols-1 md:grid-cols-4 border-t border-white/10 bg-[#050505]">
         <div className="p-8 border-b md:border-b-0 md:border-r border-white/10">
@@ -213,7 +366,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree }) => {
           <p className="text-white/40 text-xs">Simulated technical prep with Gemini.</p>
         </div>
         <div 
-          onClick={onStartForFree}
+          onClick={() => onNavigate('signup')}
           className="p-8 bg-blue-600 hover:bg-blue-500 transition-colors flex flex-col justify-center cursor-pointer"
         >
           <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest">Available Today</p>
