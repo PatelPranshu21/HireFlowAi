@@ -104,6 +104,19 @@ export interface AnalyticsScores {
   priorityImprovements: string[];
 }
 
+export interface UsageLimitItem {
+  used: number;
+  max: number;
+}
+
+export interface UsageLimits {
+  resumeScans: UsageLimitItem;
+  atsAnalyses: UsageLimitItem;
+  aiInterviews: UsageLimitItem;
+  coverLetterGenerations: UsageLimitItem;
+  jobMatchAnalyses: UsageLimitItem;
+}
+
 export interface CentralCareerProfile {
   // Basic Information
   id: string;
@@ -128,6 +141,7 @@ export interface CentralCareerProfile {
   nextBillingDate?: string;
   hasSelectedPlan?: boolean;
   transactionHistory?: TransactionItem[];
+  usageLimits?: UsageLimits;
 
   // Professional Information
   skills: string[];

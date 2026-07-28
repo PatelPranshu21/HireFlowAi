@@ -106,31 +106,37 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
 
     setUploadedFileName(file.name);
     setIsParsing(true);
-    setUploadProgress(15);
+    setUploadProgress(25);
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const rawText = (evt.target?.result as string) || '';
       setUploadedFileText(rawText);
-      setUploadProgress(50);
+      setUploadProgress(40);
 
       try {
+        await new Promise(r => setTimeout(r, 400));
+        setUploadProgress(65);
+
         const res = await fetch('/api/ai/parse-resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ resumeText: rawText || file.name })
         });
         const data = await res.json();
+        
+        setUploadProgress(85);
+        await new Promise(r => setTimeout(r, 400));
         setUploadProgress(100);
 
         const newParsed: ParsedResumeData = {
-          fullName: data.fullName || user.name || "Alex Morgan",
-          email: data.email || user.email || "alex.dev@hireflow.ai",
-          phone: data.phone || "+1 (555) 234-5678",
-          linkedIn: data.linkedIn || user.linkedInUrl || "https://linkedin.com/in/alex-dev",
-          gitHub: data.gitHub || "https://github.com/alex-dev-lead",
-          portfolio: data.portfolio || "https://alexmorgan.dev",
-          summary: data.summary || "Senior Software Engineer with 7+ years of experience building scalable web applications and cloud microservices.",
+          fullName: data.fullName || user.name || "",
+          email: data.email || user.email || "",
+          phone: data.phone || user.phone || "",
+          linkedIn: data.linkedIn || user.linkedInUrl || "",
+          gitHub: data.gitHub || user.gitHubUrl || "",
+          portfolio: data.portfolio || user.portfolioUrl || "",
+          summary: data.summary || "",
           education: data.education?.length ? data.education : [
             { id: 'edu_1', degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
           ],
@@ -281,9 +287,33 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
                     <div className="space-y-4 py-6">
                       <RefreshCw className="w-10 h-10 text-[#4cd7f6] animate-spin mx-auto" />
                       <div>
-                        <h4 className="text-base font-bold text-white font-geist">AI Parsing Resume Content...</h4>
-                        <p className="text-xs text-[#c3c5d9] mt-1">Extracting contact details, experience, skills, and projects...</p>
+                        <h4 className="text-base font-bold text-white font-geist">
+                          {uploadProgress < 35 && "Step 1/3: Resume Uploading..."}
+                          {uploadProgress >= 35 && uploadProgress < 70 && "Step 2/3: AI Resume Parsing..."}
+                          {uploadProgress >= 70 && "Step 3/3: Running ATS Analysis & Scoring..."}
+                        </h4>
+                        <p className="text-xs text-[#c3c5d9] mt-1">Extracting structure, calculating compatibility, and generating suggestions...</p>
                       </div>
+
+                      {/* 3 Step Visual Badges */}
+                      <div className="grid grid-cols-3 gap-2 w-full max-w-md mx-auto pt-2">
+                        <div className={`p-2 rounded-lg border text-[11px] font-mono flex items-center justify-center gap-1.5 transition-all ${
+                          uploadProgress >= 35 ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-blue-500/10 border-blue-500/30 text-blue-400 animate-pulse'
+                        }`}>
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Resume Upload
+                        </div>
+                        <div className={`p-2 rounded-lg border text-[11px] font-mono flex items-center justify-center gap-1.5 transition-all ${
+                          uploadProgress >= 70 ? 'bg-green-500/10 border-green-500/30 text-green-400' : uploadProgress >= 35 ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 animate-pulse' : 'bg-[#282934] border-[#434656]/30 text-[#8d90a2]'
+                        }`}>
+                          <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${uploadProgress >= 35 && uploadProgress < 70 ? 'animate-spin' : ''}`} /> Resume Parsing
+                        </div>
+                        <div className={`p-2 rounded-lg border text-[11px] font-mono flex items-center justify-center gap-1.5 transition-all ${
+                          uploadProgress >= 100 ? 'bg-green-500/10 border-green-500/30 text-green-400' : uploadProgress >= 70 ? 'bg-purple-500/10 border-purple-500/30 text-purple-400 animate-pulse' : 'bg-[#282934] border-[#434656]/30 text-[#8d90a2]'
+                        }`}>
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Resume Analysis
+                        </div>
+                      </div>
+
                       <div className="w-64 mx-auto bg-[#282934] h-2 rounded-full overflow-hidden mt-3">
                         <div className="bg-[#4cd7f6] h-full transition-all duration-300 rounded-full" style={{ width: `${uploadProgress}%` }} />
                       </div>

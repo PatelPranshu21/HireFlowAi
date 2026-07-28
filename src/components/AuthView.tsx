@@ -10,10 +10,10 @@ import {
   CheckCircle2, 
   AlertCircle, 
   RefreshCw, 
-  ShieldCheck,
   X,
   Sparkles
 } from 'lucide-react';
+import { loginWithGoogle, loginWithLinkedIn } from '../services/authOAuthService';
 
 interface AuthViewProps {
   mode: 'login' | 'signup';
@@ -43,6 +43,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
   const [signupError, setSignupError] = useState('');
   const [isSignupLoading, setIsSignupLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<string>('');
 
   // Password strength calculation
   const getPasswordStrength = (pass: string) => {
@@ -61,6 +62,182 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
 
   const passwordStrength = getPasswordStrength(signupPassword);
 
+  const handleOAuthGoogle = async () => {
+    setOauthStatus('Connecting to Google...');
+    try {
+      const emailToUse = mode === 'signup' ? signupEmail : loginEmail;
+      const nameToUse = mode === 'signup' ? signupName : '';
+      const res = await loginWithGoogle(emailToUse, nameToUse);
+      if (res.success && res.profile) {
+        const name = res.profile.name || 'Google User';
+        const email = res.profile.email || 'user@gmail.com';
+        const constructedProfile: UserProfile = {
+          id: `usr_${Date.now()}`,
+          name,
+          email,
+          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+          title: 'Software Professional',
+          experienceLevel: 'Mid Level',
+          education: [],
+          experience: [],
+          tier: '3-Day Free Trial',
+          subscriptionPlan: '3-Day Free Trial',
+          subscriptionStatus: 'trialing',
+          trialStartDate: new Date().toISOString(),
+          trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          hasSelectedPlan: true,
+          skills: [],
+          technologies: [],
+          projects: [],
+          certifications: [],
+          languages: ['English'],
+          targetRole: 'Software Engineer',
+          preferences: {
+            preferredRoles: ['Software Engineer'],
+            preferredCompanies: [],
+            preferredCities: ['Remote'],
+            remotePreference: 'Remote',
+            expectedSalaryMin: 120000,
+            expectedSalaryMax: 180000,
+            experienceLevel: 'Mid Level',
+            preferredTechnologies: ['React', 'TypeScript'],
+            preferredIndustries: ['Technology']
+          },
+          learningRoadmap: [],
+          learningProgress: [],
+          skillsLearned: [],
+          coursesCompleted: [],
+          certificationsEarned: [],
+          atsScore: 0,
+          resumeVersions: [],
+          resumeHistory: [],
+          interviewMetrics: {
+            mockScoreOverall: 0,
+            technicalScore: 0,
+            behavioralScore: 0,
+            systemDesignScore: 0,
+            strongTopics: [],
+            weakTopics: [],
+            completedSessionsCount: 0,
+            solvedCodingCount: 0
+          },
+          savedJobIds: [],
+          appliedJobIds: [],
+          hiddenJobIds: [],
+          rejectedJobIds: [],
+          analytics: {
+            employabilityScore: 0,
+            careerReadinessScore: 0,
+            aiMatchScore: 0,
+            strengths: [],
+            weaknesses: [],
+            priorityImprovements: []
+          },
+          usageLimits: {
+            resumeScans: { used: 0, max: 3 },
+            atsAnalyses: { used: 0, max: 3 },
+            aiInterviews: { used: 0, max: 5 },
+            coverLetterGenerations: { used: 0, max: 3 },
+            jobMatchAnalyses: { used: 0, max: 5 }
+          }
+        };
+
+        onLoginSuccess(constructedProfile);
+        onNavigate('dashboard');
+      }
+    } catch (err: any) {
+      setOauthStatus('Google OAuth login failed');
+    }
+  };
+
+  const handleOAuthLinkedIn = async () => {
+    setOauthStatus('Connecting to LinkedIn...');
+    try {
+      const emailToUse = mode === 'signup' ? signupEmail : loginEmail;
+      const nameToUse = mode === 'signup' ? signupName : '';
+      const res = await loginWithLinkedIn(emailToUse, nameToUse);
+      if (res.success && res.profile) {
+        const name = res.profile.name || 'LinkedIn Professional';
+        const email = res.profile.email || 'user@hireflow.ai';
+        const constructedProfile: UserProfile = {
+          id: `usr_${Date.now()}`,
+          name,
+          email,
+          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+          title: 'Career Professional',
+          experienceLevel: 'Senior Level',
+          education: [],
+          experience: [],
+          tier: '3-Day Free Trial',
+          subscriptionPlan: '3-Day Free Trial',
+          subscriptionStatus: 'trialing',
+          trialStartDate: new Date().toISOString(),
+          trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          hasSelectedPlan: true,
+          skills: [],
+          technologies: [],
+          projects: [],
+          certifications: [],
+          languages: ['English'],
+          targetRole: 'Software Engineer',
+          preferences: {
+            preferredRoles: ['Software Engineer'],
+            preferredCompanies: [],
+            preferredCities: ['Remote'],
+            remotePreference: 'Remote',
+            expectedSalaryMin: 120000,
+            expectedSalaryMax: 180000,
+            experienceLevel: 'Senior Level',
+            preferredTechnologies: ['React', 'TypeScript'],
+            preferredIndustries: ['Technology']
+          },
+          learningRoadmap: [],
+          learningProgress: [],
+          skillsLearned: [],
+          coursesCompleted: [],
+          certificationsEarned: [],
+          atsScore: 0,
+          resumeVersions: [],
+          resumeHistory: [],
+          interviewMetrics: {
+            mockScoreOverall: 0,
+            technicalScore: 0,
+            behavioralScore: 0,
+            systemDesignScore: 0,
+            strongTopics: [],
+            weakTopics: [],
+            completedSessionsCount: 0,
+            solvedCodingCount: 0
+          },
+          savedJobIds: [],
+          appliedJobIds: [],
+          hiddenJobIds: [],
+          rejectedJobIds: [],
+          analytics: {
+            employabilityScore: 0,
+            careerReadinessScore: 0,
+            aiMatchScore: 0,
+            strengths: [],
+            weaknesses: [],
+            priorityImprovements: []
+          },
+          usageLimits: {
+            resumeScans: { used: 0, max: 3 },
+            atsAnalyses: { used: 0, max: 3 },
+            aiInterviews: { used: 0, max: 5 },
+            coverLetterGenerations: { used: 0, max: 3 },
+            jobMatchAnalyses: { used: 0, max: 5 }
+          }
+        };
+
+        onLoginSuccess(constructedProfile);
+        onNavigate('dashboard');
+      }
+    } catch (err: any) {
+      setOauthStatus('LinkedIn OAuth login failed');
+    }
+  };
+
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -77,7 +254,85 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
     setIsLoginLoading(true);
     setTimeout(() => {
       setIsLoginLoading(false);
-      onLoginSuccess();
+
+      // Derive name cleanly from email e.g. "pranshu@gmail.com" -> "Pranshu" or "Pranshu Patel"
+      const nameFromEmail = loginEmail.split('@')[0]
+        .split(/[._-]/)
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(' ');
+
+      const userProfile: UserProfile = {
+        id: `usr_${Date.now()}`,
+        name: nameFromEmail || 'Authenticated User',
+        email: loginEmail,
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nameFromEmail || 'HF')}`,
+        title: 'Candidate / Engineer',
+        experienceLevel: 'Mid Level',
+        education: [],
+        experience: [],
+        tier: '3-Day Free Trial',
+        subscriptionPlan: '3-Day Free Trial',
+        subscriptionStatus: 'trialing',
+        trialStartDate: new Date().toISOString(),
+        trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        hasSelectedPlan: true,
+        skills: [],
+        technologies: [],
+        projects: [],
+        certifications: [],
+        languages: ['English'],
+        targetRole: 'Software Engineer',
+        preferences: {
+          preferredRoles: ['Software Engineer'],
+          preferredCompanies: [],
+          preferredCities: ['Remote'],
+          remotePreference: 'Remote',
+          expectedSalaryMin: 120000,
+          expectedSalaryMax: 180000,
+          experienceLevel: 'Mid Level',
+          preferredTechnologies: ['React', 'TypeScript'],
+          preferredIndustries: ['Technology']
+        },
+        learningRoadmap: [],
+        learningProgress: [],
+        skillsLearned: [],
+        coursesCompleted: [],
+        certificationsEarned: [],
+        atsScore: 0,
+        resumeVersions: [],
+        resumeHistory: [],
+        interviewMetrics: {
+          mockScoreOverall: 0,
+          technicalScore: 0,
+          behavioralScore: 0,
+          systemDesignScore: 0,
+          strongTopics: [],
+          weakTopics: [],
+          completedSessionsCount: 0,
+          solvedCodingCount: 0
+        },
+        savedJobIds: [],
+        appliedJobIds: [],
+        hiddenJobIds: [],
+        rejectedJobIds: [],
+        analytics: {
+          employabilityScore: 0,
+          careerReadinessScore: 0,
+          aiMatchScore: 0,
+          strengths: [],
+          weaknesses: [],
+          priorityImprovements: []
+        },
+        usageLimits: {
+          resumeScans: { used: 0, max: 3 },
+          atsAnalyses: { used: 0, max: 3 },
+          aiInterviews: { used: 0, max: 5 },
+          coverLetterGenerations: { used: 0, max: 3 },
+          jobMatchAnalyses: { used: 0, max: 5 }
+        }
+      };
+
+      onLoginSuccess(userProfile);
       onNavigate('dashboard');
     }, 800);
   };
@@ -110,6 +365,79 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
     setIsSignupLoading(true);
     setTimeout(() => {
       setIsSignupLoading(false);
+      
+      const newProfile: UserProfile = {
+        id: `usr_${Date.now()}`,
+        name: signupName.trim(),
+        email: signupEmail.trim(),
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(signupName.trim())}`,
+        title: 'Candidate / Engineer',
+        experienceLevel: 'Mid Level',
+        education: [],
+        experience: [],
+        tier: '3-Day Free Trial',
+        subscriptionPlan: '3-Day Free Trial',
+        subscriptionStatus: 'trialing',
+        trialStartDate: new Date().toISOString(),
+        trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        hasSelectedPlan: true,
+        skills: [],
+        technologies: [],
+        projects: [],
+        certifications: [],
+        languages: ['English'],
+        targetRole: 'Software Engineer',
+        preferences: {
+          preferredRoles: ['Software Engineer'],
+          preferredCompanies: [],
+          preferredCities: ['Remote'],
+          remotePreference: 'Remote',
+          expectedSalaryMin: 120000,
+          expectedSalaryMax: 180000,
+          experienceLevel: 'Mid Level',
+          preferredTechnologies: ['React', 'TypeScript'],
+          preferredIndustries: ['Technology']
+        },
+        learningRoadmap: [],
+        learningProgress: [],
+        skillsLearned: [],
+        coursesCompleted: [],
+        certificationsEarned: [],
+        atsScore: 0,
+        resumeVersions: [],
+        resumeHistory: [],
+        interviewMetrics: {
+          mockScoreOverall: 0,
+          technicalScore: 0,
+          behavioralScore: 0,
+          systemDesignScore: 0,
+          strongTopics: [],
+          weakTopics: [],
+          completedSessionsCount: 0,
+          solvedCodingCount: 0
+        },
+        savedJobIds: [],
+        appliedJobIds: [],
+        hiddenJobIds: [],
+        rejectedJobIds: [],
+        analytics: {
+          employabilityScore: 0,
+          careerReadinessScore: 0,
+          aiMatchScore: 0,
+          strengths: [],
+          weaknesses: [],
+          priorityImprovements: []
+        },
+        usageLimits: {
+          resumeScans: { used: 0, max: 3 },
+          atsAnalyses: { used: 0, max: 3 },
+          aiInterviews: { used: 0, max: 5 },
+          coverLetterGenerations: { used: 0, max: 3 },
+          jobMatchAnalyses: { used: 0, max: 5 }
+        }
+      };
+
+      onLoginSuccess(newProfile);
       setSignupSuccess(true);
     }, 800);
   };
@@ -152,6 +480,44 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
               </div>
             )}
 
+            {/* Social OAuth Buttons Above Form */}
+            <div className="space-y-3 mb-6">
+              <button
+                type="button"
+                onClick={handleOAuthGoogle}
+                className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/15 font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-3 cursor-pointer text-sm"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.2 9 5 12 5z"/>
+                  <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+                  <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"/>
+                  <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.2-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"/>
+                </svg>
+                <span>Continue with Google</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOAuthLinkedIn}
+                className="w-full bg-[#0A66C2]/20 hover:bg-[#0A66C2]/30 text-white border border-[#0A66C2]/40 font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-3 cursor-pointer text-sm"
+              >
+                <svg className="w-4 h-4 fill-current text-[#0A66C2] shrink-0" viewBox="0 0 24 24">
+                  <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                </svg>
+                <span>Continue with LinkedIn</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="relative my-6 text-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <span className="relative bg-[#0d0e15] px-4 text-xs font-mono font-bold text-white/40 tracking-wider">
+                ---------------- OR ----------------
+              </span>
+            </div>
+
             <form onSubmit={handleLoginSubmit} className="space-y-4 text-sm">
               <div>
                 <label className="block text-xs font-mono uppercase tracking-wider text-white/60 mb-1.5 font-bold">Email Address</label>
@@ -162,7 +528,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="alex@example.com"
+                    placeholder="you@example.com"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-white/30"
                   />
                 </div>
@@ -247,11 +613,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                 </div>
                 <h3 className="text-xl font-bold font-geist text-white">Account Created Successfully!</h3>
                 <p className="text-xs text-white/60 leading-relaxed">
-                  Welcome to HireFlow AI. You can now log in and begin optimizing your resume and tracking applications.
+                  Welcome to HireFlow AI, <strong className="text-white">{signupName}</strong>. You can now log in and begin optimizing your resume and tracking applications.
                 </p>
                 <button 
                   onClick={() => {
-                    onLoginSuccess();
                     onNavigate('pricing');
                   }}
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg cursor-pointer"
@@ -268,6 +633,44 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                   </div>
                 )}
 
+                {/* Social OAuth Buttons Above Signup Form */}
+                <div className="space-y-3 mb-6">
+                  <button
+                    type="button"
+                    onClick={handleOAuthGoogle}
+                    className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/15 font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-3 cursor-pointer text-sm"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.2 9 5 12 5z"/>
+                      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+                      <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"/>
+                      <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.2-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"/>
+                    </svg>
+                    <span>Continue with Google</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOAuthLinkedIn}
+                    className="w-full bg-[#0A66C2]/20 hover:bg-[#0A66C2]/30 text-white border border-[#0A66C2]/40 font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-3 cursor-pointer text-sm"
+                  >
+                    <svg className="w-4 h-4 fill-current text-[#0A66C2] shrink-0" viewBox="0 0 24 24">
+                      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                    </svg>
+                    <span>Continue with LinkedIn</span>
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="relative my-6 text-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/10" />
+                  </div>
+                  <span className="relative bg-[#0d0e15] px-4 text-xs font-mono font-bold text-white/40 tracking-wider">
+                    ---------------- OR ----------------
+                  </span>
+                </div>
+
                 <form onSubmit={handleSignupSubmit} className="space-y-3.5 text-sm">
                   <div>
                     <label className="block text-xs font-mono uppercase tracking-wider text-white/60 mb-1 font-bold">Full Name</label>
@@ -278,7 +681,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                         required
                         value={signupName}
                         onChange={(e) => setSignupName(e.target.value)}
-                        placeholder="Alex Morgan"
+                        placeholder="John Doe"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-white/30 text-sm"
                       />
                     </div>
@@ -293,7 +696,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                         required
                         value={signupEmail}
                         onChange={(e) => setSignupEmail(e.target.value)}
-                        placeholder="alex@example.com"
+                        placeholder="john@example.com"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-white/30 text-sm"
                       />
                     </div>
@@ -433,7 +836,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                     required
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
-                    placeholder="alex@example.com"
+                    placeholder="john@example.com"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -451,3 +854,4 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
     </div>
   );
 };
+

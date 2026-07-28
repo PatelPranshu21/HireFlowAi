@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, TransactionItem } from '../types';
 import { CreditCard, Check, Sparkles, Shield, Zap, CheckCircle2, ArrowRight, Clock, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
+import { calculateTrialRemaining } from '../utils/trialUtils';
 
 interface BillingViewProps {
   user: UserProfile;
@@ -13,16 +14,8 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
   const [upgraded, setUpgraded] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
 
-  // Calculate trial days remaining
-  let trialDaysRemaining = 0;
-  if (user.trialExpiryDate) {
-    const expiry = new Date(user.trialExpiryDate).getTime();
-    const now = new Date().getTime();
-    const diff = expiry - now;
-    if (diff > 0) {
-      trialDaysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    }
-  }
+  // Calculate trial remaining
+  const trialInfo = calculateTrialRemaining(user.trialStartDate, user.trialExpiryDate);
 
   const plans = [
     {
@@ -173,7 +166,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
             <span className="text-white/40 text-[10px] uppercase font-bold">Trial Status</span>
             <p className="font-bold text-blue-400 text-sm flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />
-              {user.subscriptionStatus === 'trialing' ? `${trialDaysRemaining} Days Remaining` : 'Completed / N/A'}
+              {user.subscriptionStatus === 'trialing' ? trialInfo.displayText : 'Completed / N/A'}
             </p>
           </div>
 

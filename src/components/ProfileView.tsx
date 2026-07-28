@@ -187,8 +187,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdateUser, on
                 <Award className="w-5 h-5 text-amber-400" /> ATS Readiness Score
               </h3>
               <div className="text-center py-4 bg-[#11131c] rounded-2xl border border-[#434656]/20">
-                <span className="text-5xl font-bold font-geist text-blue-400">{user.atsScore}</span>
-                <span className="text-xs font-mono text-white/40 block mt-1">/ 100 Overall Score</span>
+                {user.atsScore > 0 ? (
+                  <>
+                    <span className="text-5xl font-bold font-geist text-blue-400">{user.atsScore}</span>
+                    <span className="text-xs font-mono text-white/40 block mt-1">/ 100 Overall Score</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-4xl font-bold font-geist text-white/40 mb-1 block">--</span>
+                    <span className="text-xs font-mono text-white/40 block mt-1 px-4 leading-relaxed">
+                      Upload your resume to analyse your ATS compatibility.
+                    </span>
+                  </>
+                )}
               </div>
               <button 
                 onClick={() => onNavigateTab('resume-suite')}

@@ -105,19 +105,30 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
           className="bg-[#191b25] border border-[#434656]/30 hover:border-[#0052ff]/50 rounded-xl p-5 transition-all cursor-pointer group shadow-lg flex flex-col justify-between"
         >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-xs font-mono text-[#c3c5d9] uppercase tracking-wider">Current ATS Score</span>
+            <span className="text-xs font-mono text-[#c3c5d9] uppercase tracking-wider">ATS Score</span>
             <BarChart3 className="w-5 h-5 text-[#4cd7f6] group-hover:scale-110 transition-transform" />
           </div>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-4xl font-bold font-geist text-[#b7c4ff]">{analysis.overallScore}</span>
-            <span className="text-sm font-bold text-[#8d90a2]">/ 100</span>
-            <span className="text-xs font-mono text-green-400 bg-green-500/10 px-2 py-0.5 rounded ml-auto flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> +8 pts
-            </span>
-          </div>
-          <div className="mt-3 w-full bg-[#282934] h-1.5 rounded-full overflow-hidden">
-            <div className="bg-gradient-to-r from-[#571bc1] to-[#4cd7f6] h-full rounded-full" style={{ width: `${analysis.overallScore}%` }} />
-          </div>
+          {activeVersion && analysis.overallScore > 0 ? (
+            <>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-4xl font-bold font-geist text-[#b7c4ff]">{analysis.overallScore}</span>
+                <span className="text-sm font-bold text-[#8d90a2]">/ 100</span>
+                <span className="text-xs font-mono text-green-400 bg-green-500/10 px-2 py-0.5 rounded ml-auto flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" /> +8 pts
+                </span>
+              </div>
+              <div className="mt-3 w-full bg-[#282934] h-1.5 rounded-full overflow-hidden">
+                <div className="bg-gradient-to-r from-[#571bc1] to-[#4cd7f6] h-full rounded-full" style={{ width: `${analysis.overallScore}%` }} />
+              </div>
+            </>
+          ) : (
+            <div className="py-1">
+              <span className="text-3xl font-bold font-geist text-white/40 block mb-1">--</span>
+              <p className="text-[11px] text-[#c3c5d9] font-mono leading-tight">
+                Upload your resume to analyse your ATS compatibility.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Card 2: Resume Completion */}

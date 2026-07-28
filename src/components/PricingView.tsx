@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, NavigationTab } from '../types';
-import { Check, Zap, Shield, Sparkles, ArrowRight, Clock, Star, HelpCircle } from 'lucide-react';
+import { Check, Zap, Shield, Sparkles, Clock, HelpCircle, X } from 'lucide-react';
 
 interface PricingViewProps {
   user: UserProfile;
@@ -26,11 +26,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
       badge: 'Risk Free',
       description: 'Full access to core ATS resume scoring and job matcher for 3 days. No credit card required.',
       features: [
-        '3 Days Unrestricted Access',
-        'Full ATS Resume Scoring Audit',
-        'AI Job Matcher & Gap Analysis',
-        '3 AI Cover Letter Generations',
+        '3 Resume Scans / mo',
+        '3 ATS Score Audits / mo',
         '5 AI Mock Interview Practice Questions',
+        '3 AI Cover Letter Studio Generations',
+        '5 Job Match & Keyword Gap Analyses',
         'Preserves all saved data after trial'
       ],
       isTrial: true,
@@ -44,12 +44,12 @@ export const PricingView: React.FC<PricingViewProps> = ({
       badge: 'Starter',
       description: 'Essential AI resume tools for active job seekers sending weekly applications.',
       features: [
-        '10 ATS Resume Score Audits / mo',
-        '1-Click AI Bullet Rewriter',
-        'Job Matcher & Keyword Gap Finder',
-        '10 AI Cover Letters / mo',
-        'Standard Application Tracker Kanban',
-        'Email Support'
+        '10 Resume Scans / mo',
+        '10 ATS Score Audits / mo',
+        '5 AI Mock Interview Sessions / mo',
+        '10 AI Cover Letter Generations / mo',
+        '15 Job Match & Gap Analyses / mo',
+        'Standard Application Tracker Kanban'
       ],
       isTrial: false,
       buttonText: 'Choose Basic Plan'
@@ -63,13 +63,12 @@ export const PricingView: React.FC<PricingViewProps> = ({
       badge: 'Most Popular',
       description: 'Complete career acceleration suite for tech professionals targeting top roles.',
       features: [
-        'Unlimited ATS Resume Audits',
-        'Unlimited Bullet Rewriting & Impact Quantification',
-        'Unlimited Job Description Matching',
-        'Unlimited AI Cover Letter Studio',
+        '100 Resume Scans / mo (Unlimited)',
+        '100 ATS Score Audits / mo (Unlimited)',
         '30 AI Mock Interview Prep Sessions / mo',
-        'STAR Framework Detailed Scoring',
-        'Priority 24/7 AI Concierge Support'
+        '100 AI Cover Letter Generations / mo',
+        '100 Job Match & Gap Analyses / mo',
+        'STAR Framework Scoring & Priority 24/7 AI Coach'
       ],
       isTrial: false,
       buttonText: 'Upgrade to Pro'
@@ -82,16 +81,29 @@ export const PricingView: React.FC<PricingViewProps> = ({
       badge: 'Executive',
       description: 'Maximum power with 1-on-1 AI Career Coach & live negotiation guidance.',
       features: [
-        'Everything in Pro Plan',
+        'Unlimited Resume Scans & ATS Audits',
         'Unlimited AI Mock Interview Coach',
+        'Unlimited Cover Letter Studio',
+        'Unlimited Job Match & Gap Analyses',
         'LinkedIn Headline & Strategy Suite',
-        'Salary Negotiation & Counteroffer Script Generator',
-        'Dedicated AI Career Coach Assistant',
-        'Custom Job Market Insights'
+        'Salary Negotiation Script Generator'
       ],
       isTrial: false,
       buttonText: 'Get Premium Access'
     }
+  ];
+
+  const comparisonRows = [
+    { feature: 'Resume Scans / month', trial: '3', basic: '10', pro: '100 (Unlimited)', premium: 'Unlimited' },
+    { feature: 'ATS Score Analyses / month', trial: '3', basic: '10', pro: '100 (Unlimited)', premium: 'Unlimited' },
+    { feature: 'AI Interview Sessions / month', trial: '5 questions', basic: '5 sessions', pro: '30 sessions', premium: 'Unlimited' },
+    { feature: 'Cover Letter Generations / month', trial: '3', basic: '10', pro: '100 (Unlimited)', premium: 'Unlimited' },
+    { feature: 'Job Match Analyses / month', trial: '5', basic: '15', pro: '100 (Unlimited)', premium: 'Unlimited' },
+    { feature: 'Career Roadmap Access', trial: 'Basic Preview', basic: 'Standard', pro: 'Full Adaptive', premium: 'Executive Strategy' },
+    { feature: 'AI Career Coach Access', trial: 'Limited', basic: 'Standard', pro: '24/7 Priority', premium: 'Dedicated 1-on-1' },
+    { feature: 'Resume Versions Allowed', trial: '1', basic: '3', pro: '10', premium: 'Unlimited' },
+    { feature: 'Saved Jobs Limit', trial: '10', basic: '25', pro: '100', premium: 'Unlimited' },
+    { feature: 'Priority Support', trial: 'Community', basic: 'Email Support', pro: 'Priority 24/7', premium: 'Dedicated Manager' },
   ];
 
   return (
@@ -140,7 +152,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
       <div className="max-w-[1280px] w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10 mb-16">
         {plans.map((plan) => {
           const price = billingCycle === 'monthly' ? plan.priceMonthly : plan.priceYearly;
-          const isCurrent = user.subscriptionPlan === plan.name && user.subscriptionStatus === 'active';
 
           return (
             <div 
@@ -212,6 +223,39 @@ export const PricingView: React.FC<PricingViewProps> = ({
         })}
       </div>
 
+      {/* Feature Comparison Table Section */}
+      <div className="max-w-[1280px] w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-6 md:p-8 relative z-10 mb-16 shadow-2xl">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold font-geist text-white">Plan Feature & Limits Comparison</h2>
+          <p className="text-xs text-white/50 mt-1 font-mono">Detailed breakdown of quotas, features, and capabilities across all plans</p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[700px]">
+            <thead>
+              <tr className="border-b border-white/10 text-xs font-mono font-bold text-white/60 uppercase tracking-wider">
+                <th className="py-3 px-4 w-1/3">Feature / Usage Limit</th>
+                <th className="py-3 px-4 text-center">Free Trial</th>
+                <th className="py-3 px-4 text-center">Basic ($9)</th>
+                <th className="py-3 px-4 text-center text-blue-400">Pro ($19)</th>
+                <th className="py-3 px-4 text-center">Premium ($39)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 text-xs">
+              {comparisonRows.map((row, idx) => (
+                <tr key={idx} className="hover:bg-white/5 transition-colors">
+                  <td className="py-3.5 px-4 font-semibold text-white/90">{row.feature}</td>
+                  <td className="py-3.5 px-4 text-center text-white/60 font-mono">{row.trial}</td>
+                  <td className="py-3.5 px-4 text-center text-white/70 font-mono">{row.basic}</td>
+                  <td className="py-3.5 px-4 text-center font-bold text-blue-400 font-mono bg-blue-500/5">{row.pro}</td>
+                  <td className="py-3.5 px-4 text-center text-green-400 font-bold font-mono">{row.premium}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Trust & Guarantee */}
       <div className="max-w-2xl text-center space-y-2 border-t border-white/10 pt-8 text-xs font-mono text-white/40">
         <p className="flex items-center justify-center gap-2">
@@ -222,3 +266,4 @@ export const PricingView: React.FC<PricingViewProps> = ({
     </div>
   );
 };
+

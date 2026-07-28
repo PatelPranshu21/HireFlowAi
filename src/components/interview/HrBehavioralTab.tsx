@@ -15,7 +15,11 @@ import {
   UserCheck
 } from 'lucide-react';
 
-export const HrBehavioralTab: React.FC = () => {
+interface HrBehavioralTabProps {
+  onBehavioralCompleted?: () => void;
+}
+
+export const HrBehavioralTab: React.FC<HrBehavioralTabProps> = ({ onBehavioralCompleted }) => {
   const [questions] = useState<BehavioralQuestionItem[]>(sampleBehavioralQuestions);
   const [selectedQuestion, setSelectedQuestion] = useState<BehavioralQuestionItem>(questions[0]);
   const [userAnswer, setUserAnswer] = useState<string>('');
@@ -36,6 +40,9 @@ export const HrBehavioralTab: React.FC = () => {
 
     setIsEvaluating(false);
     setEvaluation(result);
+    if (result) {
+      onBehavioralCompleted?.();
+    }
   };
 
   const handleToggleMic = () => {

@@ -366,7 +366,7 @@ export const sampleCodingProblems: CodingProblemItem[] = [
       { input: 'nums = [2,7,11,15], target = 9', expectedOutput: '[0,1]' },
       { input: 'nums = [3,2,4], target = 6', expectedOutput: '[1,2]' }
     ],
-    status: 'solved'
+    status: 'unsolved'
   },
   {
     id: 'p2',
@@ -379,12 +379,12 @@ export const sampleCodingProblems: CodingProblemItem[] = [
     initialCode: `function lengthOfLongestSubstring(s) {\n  // Write your code here\n};`,
     solutionCode: `function lengthOfLongestSubstring(s) {\n  let set = new Set();\n  let left = 0, maxLen = 0;\n  for (let right = 0; right < s.length; right++) {\n    while (set.has(s[right])) {\n      set.delete(s[left]);\n      left++;\n    }\n    set.add(s[right]);\n    maxLen = Math.max(maxLen, right - left + 1);\n  }\n  return maxLen;\n};`,
     hints: ['Use the Sliding Window technique with two pointers (left and right) and a Set.'],
-    aiExplanation: 'Maintain a window [left...right]. If duplicate character is encountered at right, shrink left until duplicate is removed.',
+    aiExplanation: 'Maintain a window [left...right]. If duplicate character is encountered at right, shrink left until duplicate is restored.',
     testCases: [
       { input: 's = "abcabcbb"', expectedOutput: '3' },
       { input: 's = "bbbbb"', expectedOutput: '1' }
     ],
-    status: 'solved'
+    status: 'unsolved'
   },
   {
     id: 'p3',
@@ -419,7 +419,7 @@ export const sampleCodingProblems: CodingProblemItem[] = [
       { input: 'coins = [1,2,5], amount = 11', expectedOutput: '3' },
       { input: 'coins = [2], amount = 3', expectedOutput: '-1' }
     ],
-    status: 'attempted'
+    status: 'unsolved'
   },
   {
     id: 'p5',
@@ -558,8 +558,8 @@ export const studyPlansList: StudyPlanConfig[] = [
     title: '7-Day High-Velocity Sprint',
     description: 'Rapid refresher for upcoming interviews this week. Focused on core DSA patterns, STAR story polishing, and 2 mock interviews.',
     dailyTasks: [
-      { day: 1, topic: 'Resume Review & Top 3 STAR Stories', category: 'Behavioral', completed: true },
-      { day: 2, topic: 'Arrays, Two Pointers & Sliding Window', category: 'Coding', completed: true },
+      { day: 1, topic: 'Resume Review & Top 3 STAR Stories', category: 'Behavioral', completed: false },
+      { day: 2, topic: 'Arrays, Two Pointers & Sliding Window', category: 'Coding', completed: false },
       { day: 3, topic: 'Trees & BFS/DFS Graph Traversals', category: 'Coding', completed: false },
       { day: 4, topic: 'System Design Basics & Load Balancers', category: 'System Design', completed: false },
       { day: 5, topic: 'AI Mock Interview #1 (30 mins)', category: 'Mock Interview', completed: false },
@@ -573,8 +573,8 @@ export const studyPlansList: StudyPlanConfig[] = [
     title: '14-Day Targeted Mastery',
     description: 'Ideal preparation window for scheduled onsite loops. Comprehensive DSA coverage, System Design trade-offs, and company-deep dives.',
     dailyTasks: [
-      { day: 1, topic: 'Skill Gap Analysis & Target Role Mapping', category: 'Resume', completed: true },
-      { day: 2, topic: 'Arrays, Hash Maps & Matrix Problems', category: 'Coding', completed: true },
+      { day: 1, topic: 'Skill Gap Analysis & Target Role Mapping', category: 'Resume', completed: false },
+      { day: 2, topic: 'Arrays, Hash Maps & Matrix Problems', category: 'Coding', completed: false },
       { day: 3, topic: 'Linked Lists & Stacks/Queues', category: 'Coding', completed: false },
       { day: 4, topic: 'Binary Search & Two Pointers', category: 'Coding', completed: false },
       { day: 5, topic: 'Recursion & Backtracking', category: 'Coding', completed: false },
@@ -595,7 +595,7 @@ export const studyPlansList: StudyPlanConfig[] = [
     title: '30-Day Comprehensive Bootcamp',
     description: 'Full-spectrum preparation for FAANG/Tier-1 engineering roles covering all 14 coding categories and end-to-end distributed system architectures.',
     dailyTasks: [
-      { day: 1, topic: 'Kickoff & Baseline Assessment', category: 'Revision', completed: true }
+      { day: 1, topic: 'Kickoff & Baseline Assessment', category: 'Revision', completed: false }
     ]
   },
   {
@@ -604,7 +604,7 @@ export const studyPlansList: StudyPlanConfig[] = [
     title: '60-Day Tech Lead & Staff Engineering Track',
     description: 'Deep architectural mastery, distributed systems theory, advanced DP/Graph algorithms, and executive communication skills.',
     dailyTasks: [
-      { day: 1, topic: 'System Design Principles & Architecture Benchmarking', category: 'System Design', completed: true }
+      { day: 1, topic: 'System Design Principles & Architecture Benchmarking', category: 'System Design', completed: false }
     ]
   }
 ];
@@ -618,8 +618,8 @@ export const initialAchievements: AchievementItem[] = [
     title: 'Streak Flame',
     description: 'Maintained a 5-day continuous interview study streak',
     iconName: 'Flame',
-    unlocked: true,
-    progress: 5,
+    unlocked: false,
+    progress: 0,
     maxProgress: 5,
     rewardXp: 150
   },
@@ -628,8 +628,8 @@ export const initialAchievements: AchievementItem[] = [
     title: 'DSA Warrior',
     description: 'Solved 25 coding interview problems across categories',
     iconName: 'Code',
-    unlocked: true,
-    progress: 18,
+    unlocked: false,
+    progress: 0,
     maxProgress: 25,
     rewardXp: 300
   },
@@ -639,7 +639,7 @@ export const initialAchievements: AchievementItem[] = [
     description: 'Completed 4 System Design learning modules',
     iconName: 'Layers',
     unlocked: false,
-    progress: 2,
+    progress: 0,
     maxProgress: 4,
     rewardXp: 250
   },
@@ -649,7 +649,7 @@ export const initialAchievements: AchievementItem[] = [
     description: 'Scored 90+ on 3 HR Behavioral mock rounds',
     iconName: 'Star',
     unlocked: false,
-    progress: 1,
+    progress: 0,
     maxProgress: 3,
     rewardXp: 200
   },

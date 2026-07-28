@@ -173,7 +173,7 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
           </div>
           <p className="text-2xl font-bold font-geist text-white">{mocksCompletedCount}</p>
           <span className="text-[11px] font-mono text-[#00d26a] flex items-center gap-1 mt-1">
-            +2 this week
+            {mocksCompletedCount > 0 ? `+${mocksCompletedCount} completed` : 'No mock sessions yet'}
           </span>
         </div>
 
@@ -184,7 +184,7 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
           </div>
           <p className="text-2xl font-bold font-geist text-white">{codingSolvedCount}</p>
           <span className="text-[11px] font-mono text-[#c3c5d9] mt-1 block">
-            18 Medium • 4 Hard
+            {codingSolvedCount > 0 ? `${codingSolvedCount} problems solved` : '0 problems solved'}
           </span>
         </div>
 
@@ -195,7 +195,7 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
           </div>
           <p className="text-2xl font-bold font-geist text-white">{behavioralPracticedCount}</p>
           <span className="text-[11px] font-mono text-[#c3c5d9] mt-1 block">
-            Average STAR Score: 88%
+            {behavioralPracticedCount > 0 ? `Avg STAR Score: ${user.interviewMetrics?.behavioralScore || 85}%` : '0 responses scored'}
           </span>
         </div>
 
@@ -204,9 +204,9 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
             <span className="text-xs font-mono text-[#c3c5d9]">Study Hours</span>
             <Clock className="w-4 h-4 text-[#ff8000]" />
           </div>
-          <p className="text-2xl font-bold font-geist text-white">14.5 hrs</p>
+          <p className="text-2xl font-bold font-geist text-white">{(user.interviewMetrics?.studyHours || 0).toFixed(1)} hrs</p>
           <span className="text-[11px] font-mono text-[#00d26a] mt-1 block">
-            On track with 14-Day Plan
+            {(user.interviewMetrics?.studyHours || 0) > 0 ? 'On track with plan' : 'Start session to log time'}
           </span>
         </div>
       </div>

@@ -17,7 +17,11 @@ import {
   Terminal
 } from 'lucide-react';
 
-export const CodingPracticeTab: React.FC = () => {
+interface CodingPracticeTabProps {
+  onCodingSolved?: () => void;
+}
+
+export const CodingPracticeTab: React.FC<CodingPracticeTabProps> = ({ onCodingSolved }) => {
   const [problems, setProblems] = useState<CodingProblemItem[]>(sampleCodingProblems);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
@@ -69,6 +73,9 @@ export const CodingPracticeTab: React.FC = () => {
     setTestOutput(result);
 
     if (result.passed) {
+      if (selectedProblem.status !== 'solved') {
+        onCodingSolved?.();
+      }
       setProblems(prev => prev.map(p => p.id === selectedProblem.id ? { ...p, status: 'solved' } : p));
     } else {
       setProblems(prev => prev.map(p => p.id === selectedProblem.id && p.status === 'unsolved' ? { ...p, status: 'attempted' } : p));

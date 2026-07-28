@@ -49,18 +49,24 @@ export const AtsScoreCategoryBreakdownTab: React.FC<AtsScoreCategoryBreakdownTab
                 fill="none" 
                 strokeWidth="3.5" 
               />
-              <path 
-                className="text-[#0052ff] stroke-current transition-all duration-1000 ease-out" 
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                fill="none" 
-                strokeDasharray={`${analysis.overallScore}, 100`} 
-                strokeLinecap="round" 
-                strokeWidth="3.5" 
-              />
+              {analysis.overallScore > 0 && (
+                <path 
+                  className="text-[#0052ff] stroke-current transition-all duration-1000 ease-out" 
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                  fill="none" 
+                  strokeDasharray={`${analysis.overallScore}, 100`} 
+                  strokeLinecap="round" 
+                  strokeWidth="3.5" 
+                />
+              )}
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-4xl font-bold font-geist text-white">{analysis.overallScore}</span>
-              <span className="text-xs font-mono text-[#8d90a2]">/ 100 ATS</span>
+              <span className="text-4xl font-bold font-geist text-white">
+                {analysis.overallScore > 0 ? analysis.overallScore : '--'}
+              </span>
+              <span className="text-xs font-mono text-[#8d90a2]">
+                {analysis.overallScore > 0 ? '/ 100 ATS' : 'ATS Score'}
+              </span>
             </div>
           </div>
 
@@ -74,7 +80,7 @@ export const AtsScoreCategoryBreakdownTab: React.FC<AtsScoreCategoryBreakdownTab
               Overall ATS Compatibility Assessment
             </h2>
             <p className="text-sm text-[#c3c5d9] leading-relaxed max-w-2xl">
-              {analysis.summary}
+              {analysis.overallScore > 0 ? analysis.summary : 'Upload your resume to analyse your ATS compatibility.'}
             </p>
 
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-2">

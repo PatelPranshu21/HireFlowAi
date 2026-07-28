@@ -8,10 +8,13 @@ import {
   Sparkles, 
   Check, 
   ChevronRight, 
-  Clock, 
-  Briefcase
+  Upload,
+  CheckCircle2,
+  Circle,
+  ArrowRight
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { getGreeting } from '../utils/userUtils';
 
 interface DashboardViewProps {
   user: UserProfile;
@@ -23,22 +26,6 @@ interface DashboardViewProps {
   onAnalyzeResumeClick: () => void;
 }
 
-const mockChartData30 = [
-  { day: 'Day 1', score: 62 },
-  { day: 'Day 5', score: 65 },
-  { day: 'Day 10', score: 71 },
-  { day: 'Day 15', score: 78 },
-  { day: 'Day 20', score: 82 },
-  { day: 'Day 25', score: 85 },
-  { day: 'Day 30', score: 88 },
-];
-
-const mockChartData90 = [
-  { day: 'Month 1', score: 55 },
-  { day: 'Month 2', score: 72 },
-  { day: 'Month 3', score: 88 },
-];
-
 export const DashboardView: React.FC<DashboardViewProps> = ({
   user,
   tasks,
@@ -49,21 +36,96 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onAnalyzeResumeClick
 }) => {
   const [timeRange, setTimeRange] = useState<'30' | '90'>('30');
-  const chartData = timeRange === '30' ? mockChartData30 : mockChartData90;
+
+  const hasResume = user.resumeVersions && user.resumeVersions.length > 0;
+  const firstName = user.name ? user.name.trim().split(' ')[0] : 'User';
+  const greetingText = getGreeting(user.name);
+
+  // Dynamic Chart Data based on actual ATS / Employability scores
+  const baseScore = hasResume ? (user.atsScore || 60) : 0;
+  const chartData30 = [
+    { day: 'Day 1', score: Math.max(0, baseScore - 15) },
+    { day: 'Day 5', score: Math.max(0, baseScore - 10) },
+    { day: 'Day 10', score: Math.max(0, baseScore - 5) },
+    { day: 'Day 15', score: Math.max(0, baseScore - 2) },
+    { day: 'Day 20', score: baseScore },
+    { day: 'Day 25', score: baseScore },
+    { day: 'Day 30', score: baseScore },
+  ];
+
+  const chartData90 = [
+    { day: 'Month 1', score: Math.max(0, baseScore - 20) },
+    { day: 'Month 2', score: Math.max(0, baseScore - 10) },
+    { day: 'Month 3', score: baseScore },
+  ];
+
+  const chartData = timeRange === '30' ? chartData30 : chartData90;
+
+  // Onboarding items calculation
+  const onboardingSteps = [
+    { id: 'resume', label: 'Upload Resume', done: hasResume },
+    { id: 'profile', label: 'Complete Profile', done: Boolean(user.name && user.email && user.title) },
+    { id: 'goal', label: 'Choose Career Goal', done: Boolean(user.targetRole) },
+    { id: 'roles', label: 'Select Preferred Roles', done: Boolean(user.preferences?.preferredRoles && user.preferences.preferredRoles.length > 0) },
+    { id: 'alerts', label: 'Enable Job Alerts', done: true },
+  ];
+  const completedStepsCount = onboardingSteps.filter(s => s.done).length;
 
   return (
     <div className="max-w-[1280px] mx-auto px-6 pt-8 pb-16">
       {/* Welcome Header */}
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 w-fit mb-3">
-          <span className="flex h-2 w-2 rounded-full bg-blue-500" />
+          <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
           <span className="text-[10px] uppercase tracking-widest font-semibold text-blue-400">Live Career Telemetry</span>
         </div>
         <h2 className="text-3xl md:text-5xl font-light font-geist text-white mb-1 tracking-tight">
-          Welcome back, <span className="font-semibold">{user.name}</span>.
+          {greetingText}
         </h2>
-        <p className="text-sm md:text-base text-white/50">Your career flow and ATS optimization metrics are performing well.</p>
+        <p className="text-sm md:text-base text-white/50">
+          {hasResume 
+            ? 'Your career flow and ATS optimization metrics are actively tracking.'
+            : 'Welcome to HireFlow AI! Upload your resume to start tracking your career metrics.'}
+        </p>
       </div>
+
+      {/* Onboarding Checklist Card (Shows for new users) */}
+      {completedStepsCount < 5 && (
+        <div className="mb-8 bg-gradient-to-r from-blue-900/30 via-indigo-900/20 to-purple-900/30 border border-blue-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden backdrop-blur-xl">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="w-5 h-5 text-blue-400" />
+                <h3 className="text-lg font-bold font-geist text-white">Onboarding Checklist</h3>
+                <span className="text-xs font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2.5 py-0.5 rounded-full ml-2">
+                  {completedStepsCount}/5 Completed
+                </span>
+              </div>
+              <p className="text-xs text-white/60">Complete these quick steps to get AI-powered resume feedback and matched job leads.</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 md:gap-3">
+              {onboardingSteps.map((step) => (
+                <div 
+                  key={step.id} 
+                  onClick={() => {
+                    if (step.id === 'resume') onAnalyzeResumeClick();
+                    else if (step.id === 'profile' || step.id === 'goal' || step.id === 'roles') onNavigateTab('profile');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition-all cursor-pointer ${
+                    step.done 
+                      ? 'bg-blue-500/20 border-blue-500/40 text-blue-300' 
+                      : 'bg-white/5 border-white/10 text-white/60 hover:border-white/30 hover:text-white'
+                  }`}
+                >
+                  {step.done ? <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <Circle className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+                  <span>{step.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -77,29 +139,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <BarChart3 className="w-5 h-5 text-blue-400" />
           </div>
           <div className="flex items-center justify-center py-2">
-            <div className="relative w-24 h-24">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                <path 
-                  className="text-white/10 stroke-current" 
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                  fill="none" 
-                  strokeWidth="3" 
-                />
-                <path 
-                  className="text-blue-500 stroke-current" 
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                  fill="none" 
-                  strokeDasharray={`${user.atsScore}, 100`} 
-                  strokeLinecap="round" 
-                  strokeWidth="3" 
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-2xl font-bold font-geist text-white leading-none">{user.atsScore}</span>
-                <span className="text-[10px] text-white/40">/100</span>
+            {hasResume && (user.atsScore || 0) > 0 ? (
+              <div className="relative w-24 h-24">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <path 
+                    className="text-white/10 stroke-current" 
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                    fill="none" 
+                    strokeWidth="3" 
+                  />
+                  <path 
+                    className="text-blue-500 stroke-current" 
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                    fill="none" 
+                    strokeDasharray={`${user.atsScore || 0}, 100`} 
+                    strokeLinecap="round" 
+                    strokeWidth="3" 
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center flex-col">
+                  <span className="text-2xl font-bold font-geist text-white leading-none">{user.atsScore}</span>
+                  <span className="text-[10px] text-white/40">/100</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-2">
+                <span className="text-3xl font-bold font-geist text-white/40 mb-1">--</span>
+                <span className="text-[10px] text-blue-400 font-mono flex items-center gap-1 group-hover:underline">
+                  <Upload className="w-3 h-3" /> Upload Resume
+                </span>
+              </div>
+            )}
           </div>
+          <p className="text-[11px] text-white/40 text-center font-mono">
+            {hasResume && (user.atsScore || 0) > 0 ? 'Parsed from active resume' : 'Upload your resume to analyse your ATS compatibility.'}
+          </p>
         </div>
 
         {/* Metric 2: Employability Score */}
@@ -113,15 +187,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex flex-col gap-2">
             <span className="text-3xl font-bold font-geist text-white">
-              {user.analytics?.employabilityScore || 88}<span className="text-sm font-normal text-white/40">/100</span>
+              {hasResume ? (user.analytics?.employabilityScore || 0) : '--'}
+              <span className="text-sm font-normal text-white/40">/100</span>
             </span>
             <div className="flex gap-1.5">
-              <div className="h-1 flex-1 bg-purple-500 rounded-full" />
-              <div className="h-1 flex-1 bg-purple-500 rounded-full" />
-              <div className="h-1 flex-1 bg-purple-500 rounded-full" />
+              <div className={`h-1 flex-1 rounded-full ${hasResume ? 'bg-purple-500' : 'bg-white/10'}`} />
+              <div className={`h-1 flex-1 rounded-full ${hasResume && (user.analytics?.employabilityScore || 0) > 40 ? 'bg-purple-500' : 'bg-white/10'}`} />
+              <div className={`h-1 flex-1 rounded-full ${hasResume && (user.analytics?.employabilityScore || 0) > 70 ? 'bg-purple-500' : 'bg-white/10'}`} />
               <div className="h-1 flex-1 bg-white/10 rounded-full" />
             </div>
-            <span className="text-xs font-mono text-purple-400 font-medium">Readiness: {user.analytics?.careerReadinessScore || 85}%</span>
+            <span className="text-xs font-mono text-purple-400 font-medium">
+              Readiness: {hasResume ? `${user.analytics?.careerReadinessScore || 0}%` : 'No data'}
+            </span>
           </div>
         </div>
 
@@ -135,7 +212,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Send className="w-5 h-5 text-blue-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-4xl font-bold font-geist text-white">12</span>
+            <span className="text-4xl font-bold font-geist text-white">
+              {user.appliedJobIds?.length || 0}
+            </span>
             <span className="text-xs text-white/50">Active currently</span>
           </div>
         </div>
@@ -150,8 +229,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <CalendarIcon className="w-5 h-5 text-orange-400" />
           </div>
           <div className="flex flex-col">
-            <span className="text-4xl font-bold font-geist text-white">3</span>
-            <span className="text-xs text-white/50">Scheduled next 7 days</span>
+            <span className="text-4xl font-bold font-geist text-white">
+              {user.interviewMetrics?.completedSessionsCount || 0}
+            </span>
+            <span className="text-xs text-white/50">Sessions logged</span>
           </div>
         </div>
       </div>
@@ -183,7 +264,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} />
-                <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} domain={[40, 100]} tickLine={false} />
+                <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} domain={[0, 100]} tickLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#050505', borderColor: 'rgba(255,255,255,0.15)', borderRadius: '12px', color: '#ffffff' }}
                   labelStyle={{ color: '#60a5fa', fontWeight: 'bold' }}
@@ -251,50 +332,74 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Sparkles className="w-5 h-5 text-blue-400" />
           </div>
 
-          <div className="flex flex-col gap-3">
-            {recommendations.map((job) => (
-              <div 
-                key={job.id}
-                onClick={() => onNavigateTab('job-suite')}
-                className="p-4 rounded-xl border border-white/10 hover:border-blue-500/40 hover:bg-white/10 transition-all cursor-pointer"
+          {!hasResume ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-white/10 rounded-xl bg-white/[0.02]">
+              <Upload className="w-8 h-8 text-blue-400 mb-3 animate-bounce" />
+              <h4 className="text-sm font-bold text-white mb-1">No Resume Uploaded</h4>
+              <p className="text-xs text-white/50 mb-4 max-w-sm">
+                Upload your resume to unlock AI-powered job recommendations matched to your exact skills and experience.
+              </p>
+              <button
+                onClick={onAnalyzeResumeClick}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-lg shadow-blue-500/20"
               >
-                <div className="flex justify-between items-start mb-1">
-                  <h4 className="text-sm font-semibold text-white">{job.title}</h4>
-                  <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold">
-                    {job.matchScore}% Match
-                  </span>
-                </div>
-                <p className="text-xs font-mono text-white/50 mb-3">{job.company} • {job.location}</p>
-                <div className="flex gap-2">
-                  {job.tags.map((tag, idx) => (
-                    <span key={idx} className="text-[10px] bg-white/5 border border-white/10 rounded-md px-2 py-0.5 text-white/60">
-                      {tag}
+                Upload Resume Now <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {recommendations.slice(0, 3).map((job) => (
+                <div 
+                  key={job.id}
+                  onClick={() => onNavigateTab('job-suite')}
+                  className="p-4 rounded-xl border border-white/10 hover:border-blue-500/40 hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="text-sm font-semibold text-white">{job.title}</h4>
+                    <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold">
+                      {job.matchScore}% Match
                     </span>
-                  ))}
+                  </div>
+                  <p className="text-xs font-mono text-white/50 mb-3">{job.company} • {job.location}</p>
+                  <div className="flex gap-2">
+                    {job.tags.slice(0, 3).map((tag, idx) => (
+                      <span key={idx} className="text-[10px] bg-white/5 border border-white/10 rounded-md px-2 py-0.5 text-white/60">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Recent Activity Timeline (Spans 6 cols) */}
         <div className="lg:col-span-6 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex flex-col shadow-xl">
           <h3 className="text-xl font-bold font-geist text-white mb-6">Recent Activity</h3>
           
-          <div className="relative border-l border-white/10 ml-3 flex flex-col gap-6 pb-2">
-            {activities.map((act) => (
-              <div key={act.id} className="relative pl-6">
-                <div className={`absolute w-2.5 h-2.5 rounded-full -left-[5px] top-1.5 shadow-sm ${
-                  act.type === 'analysis' ? 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]' :
-                  act.type === 'application' ? 'bg-white/40' : 'bg-purple-400'
-                }`} />
-                <p className="text-sm text-white font-medium">{act.title}</p>
-                <p className="text-xs font-mono text-white/40 mt-0.5">{act.subtitle}</p>
-              </div>
-            ))}
-          </div>
+          {activities.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-white/10 rounded-xl bg-white/[0.02]">
+              <p className="text-sm text-white/60 font-medium">No recent activity yet.</p>
+              <p className="text-xs text-white/40 mt-1">Actions like resume scans, ATS audits, and job applications will be logged here in real-time.</p>
+            </div>
+          ) : (
+            <div className="relative border-l border-white/10 ml-3 flex flex-col gap-6 pb-2">
+              {activities.map((act) => (
+                <div key={act.id} className="relative pl-6">
+                  <div className={`absolute w-2.5 h-2.5 rounded-full -left-[5px] top-1.5 shadow-sm ${
+                    act.type === 'analysis' ? 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]' :
+                    act.type === 'application' ? 'bg-white/40' : 'bg-purple-400'
+                  }`} />
+                  <p className="text-sm text-white font-medium">{act.title}</p>
+                  <p className="text-xs font-mono text-white/40 mt-0.5">{act.subtitle}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
+

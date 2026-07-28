@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserProfile, NavigationTab } from '../types';
-import { Clock, AlertTriangle, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Clock, AlertTriangle, Sparkles, ArrowRight } from 'lucide-react';
+import { calculateTrialRemaining } from '../utils/trialUtils';
 
 interface TrialBannerProps {
   user: UserProfile;
@@ -12,22 +13,8 @@ export const TrialBanner: React.FC<TrialBannerProps> = ({ user, onNavigate }) =>
     return null;
   }
 
-  // Calculate days remaining
-  let daysRemaining = 0;
-  let hoursRemaining = 0;
-
-  if (user.trialExpiryDate) {
-    const expiry = new Date(user.trialExpiryDate).getTime();
-    const now = new Date().getTime();
-    const diffMs = expiry - now;
-
-    if (diffMs > 0) {
-      daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      hoursRemaining = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    }
-  }
-
-  const isExpired = user.subscriptionStatus === 'expired' || (daysRemaining <= 0 && hoursRemaining <= 0);
+  const trialInfo = calculateTrialRemaining(user.trialStartDate, user.trialExpiryDate);
+  const isExpired = user.subscriptionStatus === 'expired' || trialInfo.isExpired;
 
   if (isExpired) {
     return (
@@ -54,7 +41,7 @@ export const TrialBanner: React.FC<TrialBannerProps> = ({ user, onNavigate }) =>
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-blue-400 shrink-0 animate-pulse" />
         <span>
-          <strong>3-Day Free Trial Active:</strong> {daysRemaining} days {hoursRemaining} hours remaining.
+          <strong>3-Day Free Trial Active:</strong> {trialInfo.displayText}.
         </span>
       </div>
       <div className="flex items-center gap-3">

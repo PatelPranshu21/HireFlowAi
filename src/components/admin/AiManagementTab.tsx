@@ -19,7 +19,7 @@ interface AiManagementTabProps {
   onUpdateTelemetry: (updated: Partial<AiTelemetryData>) => void;
 }
 
-export const AiManagementTab: React.FC<Partial<AiManagementTabProps>> = ({
+export const AiManagementTab: React.FC<AiManagementTabProps> = ({
   telemetry = {
     totalRequestsToday: 14890,
     tokensUsedToday: 8940000,
@@ -32,7 +32,7 @@ export const AiManagementTab: React.FC<Partial<AiManagementTabProps>> = ({
     successRatePercent: 99.85,
     rateLimitHitsToday: 12
   },
-  onUpdateTelemetry = () => {}
+  onUpdateTelemetry = (_updated: Partial<AiTelemetryData>) => {}
 }) => {
   const [activeModel, setActiveModel] = useState(telemetry?.activeModel || 'Gemini 1.5 Pro');
   const [temperature, setTemperature] = useState(telemetry?.temperature || 0.7);

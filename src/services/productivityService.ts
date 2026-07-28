@@ -340,12 +340,12 @@ export class ProductivityService {
     } catch (e) {}
 
     return {
-      googleCalendar: { connected: true, email: 'alex.developer@gmail.com', syncEnabled: true },
+      googleCalendar: { connected: false, email: '', syncEnabled: false },
       outlookCalendar: { connected: false, syncEnabled: false },
-      zoom: { connected: true, user: 'alex.developer@gmail.com' },
-      googleMeet: { connected: true, email: 'alex.developer@gmail.com' },
+      zoom: { connected: false, user: '' },
+      googleMeet: { connected: false, email: '' },
       teams: { connected: false },
-      slack: { connected: true, workspace: 'TechCareers HQ' },
+      slack: { connected: false, workspace: '' },
       discord: { connected: false }
     };
   }

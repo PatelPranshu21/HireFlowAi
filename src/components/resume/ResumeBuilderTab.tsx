@@ -39,13 +39,13 @@ export const ResumeBuilderTab: React.FC<ResumeBuilderTabProps> = ({
 
   const [formData, setFormData] = useState<ParsedResumeData>(
     activeVersion.parsedData || {
-      fullName: user.name || "Alex Morgan",
-      email: user.email || "alex.dev@hireflow.ai",
-      phone: "+1 (555) 234-5678",
-      linkedIn: "https://linkedin.com/in/alex-dev",
-      gitHub: "https://github.com/alex-dev-lead",
-      portfolio: "https://alexmorgan.dev",
-      summary: "Senior Software Engineer with 7+ years of experience architecting distributed microservices and leading frontend initiatives driving 35%+ performance improvements.",
+      fullName: user.name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+      linkedIn: user.linkedInUrl || "",
+      gitHub: user.gitHubUrl || "",
+      portfolio: user.portfolioUrl || "",
+      summary: "",
       education: [
         { id: 'edu_1', degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
       ],

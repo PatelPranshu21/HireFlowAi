@@ -65,7 +65,7 @@ const aiLatencyData = [
   { time: '20:00', latency: 270, throughput: 1100 },
 ];
 
-export const AdminDashboardOverview: React.FC<Partial<AdminDashboardOverviewProps>> = ({
+export const AdminDashboardOverview: React.FC<AdminDashboardOverviewProps> = ({
   users = [],
   plans = [],
   transactions = [],
@@ -79,7 +79,7 @@ export const AdminDashboardOverview: React.FC<Partial<AdminDashboardOverviewProp
     successRatePercent: 99.85,
     rateLimitHitsToday: 12
   },
-  onNavigateSubTab = () => {}
+  onNavigateSubTab = (_subTab: string) => {}
 }) => {
   const totalRevenue = (transactions || []).reduce((acc, tx) => acc + (tx.status === 'Succeeded' ? tx.amount : 0), 0) + 41800;
   const activeSubscribers = (plans || []).reduce((acc, p) => acc + (p.subscriberCount || 0), 0);

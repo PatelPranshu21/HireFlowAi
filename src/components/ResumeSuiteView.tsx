@@ -58,14 +58,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   const [isCoachDrawerOpen, setIsCoachDrawerOpen] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
-  const activeVersion = versions.find(v => v.id === activeVersionId) || versions[0] || {
-    id: 'default',
-    versionName: 'alex_resume_v2.pdf',
-    fileName: 'alex_resume_v2.pdf',
-    uploadedAt: 'Today',
-    score: analysis.overallScore,
-    content: 'Senior Software Engineer resume content...'
-  };
+  const activeVersion = versions.find(v => v.id === activeVersionId) || versions[0] || null;
 
   const showToast = (msg: string) => {
     setSyncToast(msg);
@@ -190,7 +183,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
             </span>
           </div>
           <p className="text-xs font-mono text-[#c3c5d9] mt-0.5">
-            Active: <span className="text-[#b7c4ff] font-semibold">{activeVersion.versionName}</span> ({analysis.overallScore} ATS PTS)
+            Active: <span className="text-[#b7c4ff] font-semibold">{activeVersion ? activeVersion.versionName : 'None'}</span> ({activeVersion ? activeVersion.score : 0} ATS PTS)
           </p>
         </div>
 
@@ -248,94 +241,131 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
 
       {/* Tab View Container */}
       <main className="flex-1 p-6 md:p-8 max-w-[1700px] w-full mx-auto">
-        {activeTab === 'dashboard' && (
-          <ResumeDashboardTab
-            user={user}
-            analysis={analysis}
-            activeVersion={activeVersion}
-            versions={versions}
-            onSelectTab={(tab) => {
-              if (tab === 'job-hub' && onSelectJobHubTab) {
-                onSelectJobHubTab();
-              } else {
-                setActiveTab(tab as any);
-              }
-            }}
-            onOpenUpload={() => setIsUploadModalOpen(true)}
-            onApplyImprovement={(id) => {
-              const sug = (analysis.aiSuggestions || []).find(s => s.id === id);
-              if (sug) handleAcceptAiSuggestion(sug);
-            }}
-            onAddMissingSkillToResume={handleAddKeywordToResume}
-          />
-        )}
+        {!activeVersion && activeTab !== 'builder' && activeTab !== 'versions' ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
+            <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-4">
+              <Upload className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold font-geist text-white mb-2">No resume uploaded</h3>
+            <p className="text-sm text-white/50 max-w-md mb-6 leading-relaxed">
+              No resume uploaded. Upload your resume to begin AI analysis, calculate your ATS compatibility score, and generate bullet point optimizations.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-mono font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Upload Your Resume
+              </button>
+              <button
+                onClick={() => setActiveTab('builder')}
+                className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-mono font-bold transition-all border border-white/10 flex items-center gap-2 cursor-pointer"
+              >
+                <Layout className="w-4 h-4" />
+                Create with Guided Builder
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'dashboard' && activeVersion && (
+              <ResumeDashboardTab
+                user={user}
+                analysis={analysis}
+                activeVersion={activeVersion}
+                versions={versions}
+                onSelectTab={(tab) => {
+                  if (tab === 'job-hub' && onSelectJobHubTab) {
+                    onSelectJobHubTab();
+                  } else {
+                    setActiveTab(tab as any);
+                  }
+                }}
+                onOpenUpload={() => setIsUploadModalOpen(true)}
+                onApplyImprovement={(id) => {
+                  const sug = (analysis.aiSuggestions || []).find(s => s.id === id);
+                  if (sug) handleAcceptAiSuggestion(sug);
+                }}
+                onAddMissingSkillToResume={handleAddKeywordToResume}
+              />
+            )}
 
-        {activeTab === 'ats-score' && (
-          <AtsScoreCategoryBreakdownTab
-            analysis={analysis}
-          />
-        )}
+            {activeTab === 'ats-score' && (
+              <AtsScoreCategoryBreakdownTab
+                analysis={analysis}
+              />
+            )}
 
-        {activeTab === 'section-analysis' && (
-          <AiSectionAnalysisTab
-            analysis={analysis}
-            onApplySectionChange={handleApplySectionChange}
-          />
-        )}
+            {activeTab === 'section-analysis' && (
+              <AiSectionAnalysisTab
+                analysis={analysis}
+                onApplySectionChange={handleApplySectionChange}
+              />
+            )}
 
-        {activeTab === 'ai-improvements' && (
-          <AiImprovementEngineTab
-            analysis={analysis}
-            onAcceptSuggestion={handleAcceptAiSuggestion}
-            onRejectSuggestion={() => showToast("Suggestion dismissed.")}
-          />
-        )}
+            {activeTab === 'ai-improvements' && (
+              <AiImprovementEngineTab
+                analysis={analysis}
+                onAcceptSuggestion={handleAcceptAiSuggestion}
+                onRejectSuggestion={() => showToast("Suggestion dismissed.")}
+              />
+            )}
 
-        {activeTab === 'keywords' && (
-          <AtsKeywordAnalysisTab
-            analysis={analysis}
-            onAddKeywordToResume={handleAddKeywordToResume}
-          />
-        )}
+            {activeTab === 'keywords' && (
+              <AtsKeywordAnalysisTab
+                analysis={analysis}
+                onAddKeywordToResume={handleAddKeywordToResume}
+              />
+            )}
 
-        {activeTab === 'tailoring' && (
-          <ResumeTailoringTab
-            user={user}
-            activeVersion={activeVersion}
-            onSaveTailoredVersion={handleSaveTailoredVersion}
-            onJobHubNotify={() => showToast("Job Hub matches refreshed for new tailored resume!")}
-          />
-        )}
+            {activeTab === 'tailoring' && activeVersion && (
+              <ResumeTailoringTab
+                user={user}
+                activeVersion={activeVersion}
+                onSaveTailoredVersion={handleSaveTailoredVersion}
+                onJobHubNotify={() => showToast("Job Hub matches refreshed for new tailored resume!")}
+              />
+            )}
 
-        {activeTab === 'versions' && (
-          <ResumeVersionManagerTab
-            versions={versions}
-            activeVersionId={activeVersionId}
-            onSetActiveVersion={(id) => {
-              setActiveVersionId(id);
-              showToast("Switched active resume version.");
-            }}
-            onDuplicateVersion={handleDuplicateVersion}
-            onRenameVersion={handleRenameVersion}
-            onDeleteVersion={handleDeleteVersion}
-            onDownloadVersion={handleDownloadVersion}
-            onOpenUploadModal={() => setIsUploadModalOpen(true)}
-          />
-        )}
+            {activeTab === 'versions' && (
+              <ResumeVersionManagerTab
+                versions={versions}
+                activeVersionId={activeVersionId}
+                onSetActiveVersion={(id) => {
+                  setActiveVersionId(id);
+                  showToast("Switched active resume version.");
+                }}
+                onDuplicateVersion={handleDuplicateVersion}
+                onRenameVersion={handleRenameVersion}
+                onDeleteVersion={handleDeleteVersion}
+                onDownloadVersion={(v, fmt) => handleDownloadVersion(v, fmt)}
+                onOpenUploadModal={() => setIsUploadModalOpen(true)}
+              />
+            )}
 
-        {activeTab === 'builder' && (
-          <ResumeBuilderTab
-            user={user}
-            activeVersion={activeVersion}
-            onUpdateResumeData={handleUpdateResumeData}
-            onDownloadResume={(format) => handleDownloadVersion(activeVersion, format)}
-          />
-        )}
+            {activeTab === 'builder' && (
+              <ResumeBuilderTab
+                user={user}
+                activeVersion={activeVersion || {
+                  id: 'draft',
+                  versionName: 'My Resume Draft',
+                  fileName: 'my_resume.pdf',
+                  uploadedAt: 'Just now',
+                  score: 70,
+                  content: ''
+                }}
+                onUpdateResumeData={handleUpdateResumeData}
+                onDownloadResume={(format) => activeVersion && handleDownloadVersion(activeVersion, format)}
+              />
+            )}
 
-        {activeTab === 'analytics' && (
-          <ResumeAnalyticsTab
-            analysis={analysis}
-          />
+            {activeTab === 'analytics' && (
+              <ResumeAnalyticsTab
+                analysis={analysis}
+              />
+            )}
+          </>
         )}
       </main>
 

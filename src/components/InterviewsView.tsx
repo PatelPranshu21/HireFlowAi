@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, ApplicationCard, ResumeVersion, InterviewFeedbackReport } from '../types';
+import { useEcosystem } from '../context/EcosystemContext';
 import { InterviewDashboardTab } from './interview/InterviewDashboardTab';
 import { AiMockInterviewTab } from './interview/AiMockInterviewTab';
 import { CompanyPrepTab } from './interview/CompanyPrepTab';
@@ -33,42 +34,12 @@ interface InterviewsViewProps {
 }
 
 export const InterviewsView: React.FC<InterviewsViewProps> = ({
-  user = {
-    id: 'u1',
-    name: 'Alex Rivera',
-    email: 'alex@hireflow.ai',
-    subscriptionStatus: 'active',
-    planType: 'pro',
-    targetRole: 'Senior Software Engineer'
-  },
-  applications = [
-    {
-      id: 'app_g',
-      jobTitle: 'Senior Frontend Engineer',
-      company: 'Google',
-      location: 'Mountain View, CA',
-      salary: '$180,000 - $240,000',
-      type: 'Full-time',
-      appliedDate: '2 days ago',
-      status: 'interview',
-      interviewTime: 'Tomorrow, 2:00 PM',
-      companyLogo: 'https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?auto=format&fit=crop&q=80&w=100'
-    },
-    {
-      id: 'app_m',
-      jobTitle: 'Full Stack Engineer',
-      company: 'Microsoft',
-      location: 'Redmond, WA',
-      salary: '$170,000 - $220,000',
-      type: 'Full-time',
-      appliedDate: '1 week ago',
-      status: 'interview',
-      interviewTime: 'Friday, 10:00 AM',
-      companyLogo: 'https://images.unsplash.com/photo-1633419461186-7d40a38105ec?auto=format&fit=crop&q=80&w=100'
-    }
-  ],
+  user,
+  applications = [],
   versions = []
 }) => {
+  const ecosystem = useEcosystem();
+
   // Navigation Sub-Tabs
   const [activeTab, setActiveTab] = useState<'dashboard' | 'mock' | 'companies' | 'coding' | 'behavioral' | 'system-design' | 'roadmap' | 'achievements'>('dashboard');
 
@@ -76,29 +47,82 @@ export const InterviewsView: React.FC<InterviewsViewProps> = ({
   const [isAiCoachOpen, setIsAiCoachOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
-  // User Gamification & Stats State
-  const [readinessScore, setReadinessScore] = useState(84);
-  const [mocksCompleted, setMocksCompleted] = useState(4);
-  const [codingSolved, setCodingSolved] = useState(22);
-  const [behavioralPracticed, setBehavioralPracticed] = useState(12);
-  const [streakDays, setStreakDays] = useState(7);
-  const [xpPoints, setXpPoints] = useState(720);
+  // User Gamification & Stats State derived from user profile
+  const [readinessScore, setReadinessScore] = useState(user?.interviewMetrics?.averageScore || user?.analytics?.careerReadinessScore || 0);
+  const [mocksCompleted, setMocksCompleted] = useState(user?.interviewMetrics?.completedSessionsCount || 0);
+  const [codingSolved, setCodingSolved] = useState(user?.interviewMetrics?.solvedCodingCount || user?.interviewMetrics?.codingProblemsSolved || 0);
+  const [behavioralPracticed, setBehavioralPracticed] = useState(user?.interviewMetrics?.behavioralPracticed || 0);
+  const [streakDays, setStreakDays] = useState(user?.streakDays || 0);
+  const [xpPoints, setXpPoints] = useState(user?.interviewMetrics?.xpPoints || 0);
 
   // Weak & Strong Areas
-  const [weakAreas, setWeakAreas] = useState<string[]>(['Dynamic Programming 2D', 'System Design Sharding', 'Memory Allocation Trade-offs']);
-  const [strongAreas, setStrongAreas] = useState<string[]>(['React Architecture', 'STAR Storytelling', 'REST API Idempotency']);
+  const [weakAreas, setWeakAreas] = useState<string[]>(user?.interviewMetrics?.weakAreas || []);
+  const [strongAreas, setStrongAreas] = useState<string[]>(user?.interviewMetrics?.strongAreas || []);
 
-  // Calendar Scheduled Events State
-  const [scheduledEvents, setScheduledEvents] = useState<any[]>([
-    { id: 'evt_1', title: 'Google L5 Technical System Design Round', company: 'Google', date: 'Jul 28, 2026', time: '14:00', type: 'Real Interview' },
-    { id: 'evt_2', title: 'Full Stack AI Mock Interview Session', company: 'HireFlow AI', date: 'Jul 29, 2026', time: '10:00', type: 'Mock Practice' }
-  ]);
+  // Calendar Scheduled Events State derived from interview applications
+  const [scheduledEvents, setScheduledEvents] = useState<any[]>(
+    applications
+      .filter(a => a.status === 'interview')
+      .map((a, idx) => ({
+        id: `evt_app_${a.id}`,
+        title: `${a.company} ${a.jobTitle} Interview`,
+        company: a.company,
+        date: a.interviewTime || 'Upcoming',
+        time: '14:00',
+        type: 'Real Interview'
+      }))
+  );
 
   // Handle session completion from AI Mock Interview tab
   const handleSessionComplete = (report: InterviewFeedbackReport) => {
-    setMocksCompleted(prev => prev + 1);
+    const newCount = mocksCompleted + 1;
+    setMocksCompleted(newCount);
     setXpPoints(prev => prev + 150);
     setReadinessScore(prev => Math.min(98, prev + 3));
+
+    if (ecosystem?.updateProfileDetails && user) {
+      ecosystem.updateProfileDetails({
+        interviewMetrics: {
+          ...user.interviewMetrics,
+          completedSessionsCount: newCount,
+          studyHours: (user.interviewMetrics?.studyHours || 0) + 0.5,
+          mockScoreOverall: report.overallScore || 85
+        }
+      });
+    }
+  };
+
+  const handleCodingSolved = () => {
+    const newCount = codingSolved + 1;
+    setCodingSolved(newCount);
+    setXpPoints(prev => prev + 50);
+
+    if (ecosystem?.updateProfileDetails && user) {
+      ecosystem.updateProfileDetails({
+        interviewMetrics: {
+          ...user.interviewMetrics,
+          solvedCodingCount: newCount,
+          codingProblemsSolved: newCount,
+          studyHours: (user.interviewMetrics?.studyHours || 0) + 0.3
+        }
+      });
+    }
+  };
+
+  const handleBehavioralCompleted = () => {
+    const newCount = behavioralPracticed + 1;
+    setBehavioralPracticed(newCount);
+    setXpPoints(prev => prev + 50);
+
+    if (ecosystem?.updateProfileDetails && user) {
+      ecosystem.updateProfileDetails({
+        interviewMetrics: {
+          ...user.interviewMetrics,
+          behavioralPracticed: newCount,
+          studyHours: (user.interviewMetrics?.studyHours || 0) + 0.2
+        }
+      });
+    }
   };
 
   // Launch Company Mock Interview
@@ -221,11 +245,11 @@ export const InterviewsView: React.FC<InterviewsViewProps> = ({
         )}
 
         {activeTab === 'coding' && (
-          <CodingPracticeTab />
+          <CodingPracticeTab onCodingSolved={handleCodingSolved} />
         )}
 
         {activeTab === 'behavioral' && (
-          <HrBehavioralTab />
+          <HrBehavioralTab onBehavioralCompleted={handleBehavioralCompleted} />
         )}
 
         {activeTab === 'system-design' && (

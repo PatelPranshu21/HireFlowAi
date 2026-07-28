@@ -7,6 +7,7 @@ import { JobDetailsModal } from './JobDetailsModal';
 import { CompareJobsModal } from './CompareJobsModal';
 import { PreferencesView } from './PreferencesView';
 import { JobAnalyticsView } from './JobAnalyticsView';
+import { ResumeUploadParserModal } from './resume/ResumeUploadParserModal';
 
 import { 
   Sparkles, 
@@ -43,7 +44,8 @@ import {
   Star,
   Heart,
   BarChart2,
-  Settings
+  Settings,
+  Upload
 } from 'lucide-react';
 
 interface JobSuiteViewProps {
@@ -54,6 +56,7 @@ interface JobSuiteViewProps {
   user?: UserProfile;
   onUpdateUser?: (updated: Partial<UserProfile>) => void;
   onNavigateTab?: (tab: any) => void;
+  onUploadResume?: (fileText: string, fileName: string) => void;
   notifications?: NotificationItem[];
   onAddNotification?: (notif: NotificationItem) => void;
 }
@@ -66,6 +69,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   user,
   onUpdateUser,
   onNavigateTab,
+  onUploadResume,
   onAddNotification
 }) => {
   // Main Tab State
@@ -73,6 +77,19 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   
   // Tracker View Mode
   const [trackerMode, setTrackerMode] = useState<'kanban' | 'list'>('kanban');
+
+  // Modal State for Resume Upload
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  // Check if a resume exists and has been analyzed
+  const hasResume = useMemo(() => {
+    return !!(
+      resumeText?.trim() ||
+      user?.resumeText?.trim() ||
+      ((user?.atsScore || 0) > 0) ||
+      (user?.resumeVersions && user.resumeVersions.length > 0)
+    );
+  }, [resumeText, user]);
 
   // Search & Global Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -449,7 +466,15 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                     Good Morning, {activeUser.name.split(' ')[0]}.
                   </h2>
                   <p className="text-xs sm:text-sm font-mono text-[#e1e1ef] mt-2 leading-relaxed max-w-2xl">
-                    We found <span className="text-[#4cd7f6] font-bold">{allJobs.length} top opportunities</span> matching your profile today. You have a <span className="text-[#8d90a2] font-bold">92% match</span> for Senior Software Engineering roles.
+                    {hasResume ? (
+                      <>
+                        We found <span className="text-[#4cd7f6] font-bold">{allJobs.length} top opportunities</span> matching your profile today. You have a <span className="text-[#8d90a2] font-bold">92% match</span> for Senior Software Engineering roles.
+                      </>
+                    ) : (
+                      <>
+                        Upload your resume to unlock AI-powered job recommendations tailored specifically to your skills and experience.
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -460,14 +485,18 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                   >
                     <Settings className="w-4 h-4" /> Fine-Tune Preferences
                   </button>
-                  {onNavigateTab && (
-                    <button
-                      onClick={() => onNavigateTab('resume-suite')}
-                      className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-lg flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4" /> Re-analyze Resume
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (onNavigateTab) {
+                        onNavigateTab('resume-suite');
+                      } else {
+                        setIsUploadModalOpen(true);
+                      }
+                    }}
+                    className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-lg flex items-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" /> {hasResume ? 'Re-analyze Resume' : 'Upload Resume'}
+                  </button>
                 </div>
               </div>
 
@@ -475,12 +504,12 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-[#434656]/30 relative z-10">
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
                   <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">New Jobs Today</span>
-                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">12</span>
+                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">{hasResume ? '12' : '0'}</span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
                   <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">High Match (90%+)</span>
                   <span className="text-xl font-bold font-mono text-[#8d90a2] mt-0.5 block">
-                    {allJobs.filter(j => j.matchScore >= 90).length}
+                    {hasResume ? allJobs.filter(j => j.matchScore >= 90).length : 0}
                   </span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
@@ -499,118 +528,180 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
                   <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Profile Completion</span>
-                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">95%</span>
+                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">{hasResume ? '95%' : '20%'}</span>
                 </div>
               </div>
             </div>
 
-            {/* Global Search & Filters Toolbar */}
-            <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
-              
-              {/* Search Bar */}
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-[#a1a3b8] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search by company, role title, skills (e.g. React, C++), location..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-[#11131c] border border-[#434656]/40 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#a1a3b8] focus:outline-none focus:border-[#0052ff]"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a1a3b8] hover:text-white cursor-pointer">
-                    <X className="w-4 h-4" />
+            {/* If NO Resume uploaded: Display Empty State and Flow Pipeline */}
+            {!hasResume ? (
+              <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-8 sm:p-12 text-center space-y-8 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-[#0052ff]/5 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="w-16 h-16 bg-[#0052ff]/10 border border-[#0052ff]/30 rounded-2xl flex items-center justify-center mx-auto text-[#4cd7f6] shadow-inner">
+                  <FileText className="w-8 h-8 text-[#0052ff]" />
+                </div>
+
+                <div className="space-y-3 max-w-xl mx-auto relative z-10">
+                  <h3 className="text-xl sm:text-2xl font-bold font-geist text-white leading-tight">
+                    Upload your resume to unlock AI-powered job recommendations.
+                  </h3>
+                  <p className="text-xs sm:text-sm font-mono text-[#a1a3b8] leading-relaxed">
+                    Our AI pipeline analyzes your experience, extracts key technical skills, generates your ATS score, and recommends targeted high-confidence job opportunities.
+                  </p>
+                </div>
+
+                {/* Flow Pipeline Steps */}
+                <div className="pt-2 pb-2 relative z-10">
+                  <div className="text-[11px] font-mono text-[#4cd7f6] uppercase tracking-wider font-bold mb-4">
+                    AI Match Activation Flow
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 max-w-4xl mx-auto">
+                    <div className="bg-[#11131c] border border-red-500/40 rounded-xl px-3 py-2 text-xs font-mono text-red-300 flex items-center gap-2 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> No Resume
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#434656]" />
+                    <div className="bg-[#11131c] border border-[#0052ff]/50 rounded-xl px-3 py-2 text-xs font-mono text-white flex items-center gap-2 shadow-sm">
+                      <Upload className="w-3.5 h-3.5 text-[#0052ff]" /> Upload Resume
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#434656]" />
+                    <div className="bg-[#11131c] border border-[#571bc1]/50 rounded-xl px-3 py-2 text-xs font-mono text-[#d0bcff] flex items-center gap-2 shadow-sm">
+                      <Sparkles className="w-3.5 h-3.5 text-[#571bc1]" /> AI Resume Analysis
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#434656]" />
+                    <div className="bg-[#11131c] border border-[#4cd7f6]/50 rounded-xl px-3 py-2 text-xs font-mono text-[#4cd7f6] flex items-center gap-2 shadow-sm">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#4cd7f6]" /> Extract Skills
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#434656]" />
+                    <div className="bg-[#11131c] border border-amber-500/50 rounded-xl px-3 py-2 text-xs font-mono text-amber-300 flex items-center gap-2 shadow-sm">
+                      <Award className="w-3.5 h-3.5 text-amber-400" /> Generate ATS Score
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#434656]" />
+                    <div className="bg-[#11131c] border border-green-500/50 rounded-xl px-3 py-2 text-xs font-mono text-green-400 flex items-center gap-2 shadow-sm">
+                      <Briefcase className="w-3.5 h-3.5 text-green-400" /> Generate AI Job Recommendations
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 relative z-10">
+                  <button
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white font-mono text-xs font-bold px-6 py-3.5 rounded-xl inline-flex items-center gap-2.5 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" /> Upload Resume
                   </button>
-                )}
-              </div>
-
-              {/* Quick Select Filter Dropdowns */}
-              <div className="flex flex-wrap items-center gap-2">
-                
-                <select
-                  value={remoteFilter}
-                  onChange={(e) => setRemoteFilter(e.target.value)}
-                  className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
-                >
-                  <option value="all">All Locations</option>
-                  <option value="remote">Remote Only</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="onsite">On-site</option>
-                </select>
-
-                <select
-                  value={experienceFilter}
-                  onChange={(e) => setExperienceFilter(e.target.value)}
-                  className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
-                >
-                  <option value="all">All Experience Levels</option>
-                  <option value="5+">5+ Years</option>
-                  <option value="6+">6+ Years</option>
-                  <option value="7+">7+ Years</option>
-                </select>
-
-                <select
-                  value={jobTypeFilter}
-                  onChange={(e) => setJobTypeFilter(e.target.value)}
-                  className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
-                >
-                  <option value="all">All Employment Types</option>
-                  <option value="full-time">Full-Time</option>
-                  <option value="contract">Contract</option>
-                </select>
-
-                <button
-                  onClick={() => setShowFiltersDrawer(!showFiltersDrawer)}
-                  className={`p-2 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    showFiltersDrawer ? 'bg-[#0052ff] text-white border-[#0052ff]' : 'bg-[#11131c] border-[#434656]/40 text-[#a1a3b8] hover:text-white'
-                  }`}
-                >
-                  <Filter className="w-4 h-4" /> Filters
-                </button>
-
-              </div>
-
-            </div>
-
-            {/* AI Intelligent Suggestion Panel */}
-            <div className="bg-[#241f3e]/60 border border-[#571bc1]/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-[#d0bcff] shrink-0" />
-                <p className="text-xs text-[#e1e1ef] font-mono leading-relaxed">
-                  <strong className="text-[#d0bcff]">AI Insight:</strong> Adding <span className="text-[#4cd7f6] font-bold">Docker</span> and <span className="text-[#4cd7f6] font-bold">Terraform</span> to your profile could increase your average candidate match score by ~8% across 42 additional opportunities.
-                </p>
-              </div>
-              <button 
-                onClick={() => setActiveTab('preferences')}
-                className="text-xs font-mono text-[#4cd7f6] hover:underline font-bold shrink-0 cursor-pointer"
-              >
-                Update Preferences →
-              </button>
-            </div>
-
-            {/* Recommended Job Cards Grid */}
-            {filteredRecommendedJobs.length === 0 ? (
-              <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-12 text-center space-y-4">
-                <AlertCircle className="w-12 h-12 text-[#4cd7f6] mx-auto" />
-                <h3 className="text-lg font-bold font-geist text-white">No jobs match your current filter selection</h3>
-                <p className="text-xs font-mono text-[#a1a3b8] max-w-md mx-auto">
-                  Try clearing search filters or adjusting your remote preference. AI recommendations automatically update as search criteria change!
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setRemoteFilter('all');
-                    setExperienceFilter('all');
-                    setJobTypeFilter('all');
-                  }}
-                  className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer"
-                >
-                  Reset All Filters
-                </button>
+                </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredRecommendedJobs.map((job) => {
+              <>
+                {/* Global Search & Filters Toolbar */}
+                <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
+                  
+                  {/* Search Bar */}
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-[#a1a3b8] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search by company, role title, skills (e.g. React, C++), location..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-[#11131c] border border-[#434656]/40 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#a1a3b8] focus:outline-none focus:border-[#0052ff]"
+                    />
+                    {searchQuery && (
+                      <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a1a3b8] hover:text-white cursor-pointer">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Quick Select Filter Dropdowns */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    
+                    <select
+                      value={remoteFilter}
+                      onChange={(e) => setRemoteFilter(e.target.value)}
+                      className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
+                    >
+                      <option value="all">All Locations</option>
+                      <option value="remote">Remote Only</option>
+                      <option value="hybrid">Hybrid</option>
+                      <option value="onsite">On-site</option>
+                    </select>
+
+                    <select
+                      value={experienceFilter}
+                      onChange={(e) => setExperienceFilter(e.target.value)}
+                      className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
+                    >
+                      <option value="all">All Experience Levels</option>
+                      <option value="5+">5+ Years</option>
+                      <option value="6+">6+ Years</option>
+                      <option value="7+">7+ Years</option>
+                    </select>
+
+                    <select
+                      value={jobTypeFilter}
+                      onChange={(e) => setJobTypeFilter(e.target.value)}
+                      className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
+                    >
+                      <option value="all">All Employment Types</option>
+                      <option value="full-time">Full-Time</option>
+                      <option value="contract">Contract</option>
+                    </select>
+
+                    <button
+                      onClick={() => setShowFiltersDrawer(!showFiltersDrawer)}
+                      className={`p-2 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        showFiltersDrawer ? 'bg-[#0052ff] text-white border-[#0052ff]' : 'bg-[#11131c] border-[#434656]/40 text-[#a1a3b8] hover:text-white'
+                      }`}
+                    >
+                      <Filter className="w-4 h-4" /> Filters
+                    </button>
+
+                  </div>
+
+                </div>
+
+                {/* AI Intelligent Suggestion Panel */}
+                <div className="bg-[#241f3e]/60 border border-[#571bc1]/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-[#d0bcff] shrink-0" />
+                    <p className="text-xs text-[#e1e1ef] font-mono leading-relaxed">
+                      <strong className="text-[#d0bcff]">AI Insight:</strong> Adding <span className="text-[#4cd7f6] font-bold">Docker</span> and <span className="text-[#4cd7f6] font-bold">Terraform</span> to your profile could increase your average candidate match score by ~8% across 42 additional opportunities.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setActiveTab('preferences')}
+                    className="text-xs font-mono text-[#4cd7f6] hover:underline font-bold shrink-0 cursor-pointer"
+                  >
+                    Update Preferences →
+                  </button>
+                </div>
+
+                {/* Recommended Job Cards Grid */}
+                {filteredRecommendedJobs.length === 0 ? (
+                  <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-12 text-center space-y-4">
+                    <AlertCircle className="w-12 h-12 text-[#4cd7f6] mx-auto" />
+                    <h3 className="text-lg font-bold font-geist text-white">No jobs match your current filter selection</h3>
+                    <p className="text-xs font-mono text-[#a1a3b8] max-w-md mx-auto">
+                      Try clearing search filters or adjusting your remote preference. AI recommendations automatically update as search criteria change!
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setRemoteFilter('all');
+                        setExperienceFilter('all');
+                        setJobTypeFilter('all');
+                      }}
+                      className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer"
+                    >
+                      Reset All Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {filteredRecommendedJobs.map((job) => {
                   const isSaved = savedJobIds.includes(job.id);
                   const isApplied = applications.some(a => a.jobId === job.id || (a.company === job.company && a.jobTitle === job.title));
 
@@ -761,6 +852,8 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                 })}
               </div>
             )}
+            </>
+          )}
 
           </div>
         )}
@@ -944,8 +1037,22 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
               </div>
             </div>
 
-            {/* Kanban Mode */}
-            {trackerMode === 'kanban' ? (
+            {/* Applications List/Kanban or Empty State */}
+            {applications.length === 0 ? (
+              <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-12 text-center space-y-4 shadow-xl">
+                <Briefcase className="w-12 h-12 text-[#4cd7f6] mx-auto opacity-80" />
+                <h3 className="text-xl font-bold font-geist text-white">No applications yet.</h3>
+                <p className="text-xs sm:text-sm font-mono text-[#a1a3b8] max-w-md mx-auto">
+                  Apply for jobs from Job Hub to start tracking your progress.
+                </p>
+                <button
+                  onClick={() => setActiveTab('recommended')}
+                  className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-lg inline-flex items-center gap-2"
+                >
+                  <Briefcase className="w-4 h-4" /> Explore Job Recommendations
+                </button>
+              </div>
+            ) : trackerMode === 'kanban' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4 overflow-x-auto pb-4">
                 {kanbanStages.map((stage) => {
                   const stageApps = applications.filter(a => a.status === stage.id);
@@ -1281,6 +1388,25 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
           savedJobIds={savedJobIds}
         />
       )}
+
+      {/* MODAL 6: Resume Upload & Analysis Modal */}
+      <ResumeUploadParserModal
+        user={activeUser}
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSaveParsedResume={(parsedData, fileName, fileText) => {
+          if (onUploadResume) {
+            onUploadResume(fileText, fileName);
+          } else if (onUpdateUser) {
+            onUpdateUser({ atsScore: 85, resumeText: fileText });
+          }
+          setIsUploadModalOpen(false);
+          showToast(`Resume "${fileName}" uploaded & analyzed! Job recommendations unlocked.`);
+        }}
+        onSyncWithProfilePrompt={() => {
+          showToast("Profile auto-synced with parsed resume skills and experience!");
+        }}
+      />
 
     </div>
   );

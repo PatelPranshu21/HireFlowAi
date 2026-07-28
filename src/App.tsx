@@ -291,6 +291,7 @@ function MainAppContent() {
               user={profile}
               onUpdateUser={updateProfileDetails}
               onNavigateTab={handleNavigate}
+              onUploadResume={uploadResume}
               notifications={notifications}
               onAddNotification={() => {}}
             />

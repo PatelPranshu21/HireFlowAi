@@ -106,6 +106,7 @@ interface EcosystemContextType {
   generateAiDailySchedule: () => void;
   updateProdSettings: (settings: Partial<ProductivitySettings>) => void;
   toggleIntegration: (key: keyof ThirdPartyIntegrationState) => void;
+  recordUsage: (type: 'resumeScans' | 'atsAnalyses' | 'aiInterviews' | 'coverLetterGenerations' | 'jobMatchAnalyses', amount?: number) => boolean;
 }
 
 const EcosystemContext = createContext<EcosystemContextType | null>(null);
@@ -525,6 +526,51 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     });
   };
 
+  const recordUsage = (type: 'resumeScans' | 'atsAnalyses' | 'aiInterviews' | 'coverLetterGenerations' | 'jobMatchAnalyses', amount: number = 1): boolean => {
+    let isAllowed = true;
+    setProfile(prev => {
+      const currentLimits = prev.usageLimits || {
+        resumeScans: { used: 0, max: 3 },
+        atsAnalyses: { used: 0, max: 3 },
+        aiInterviews: { used: 0, max: 5 },
+        coverLetterGenerations: { used: 0, max: 3 },
+        jobMatchAnalyses: { used: 0, max: 5 }
+      };
+
+      const item = currentLimits[type] || { used: 0, max: 10 };
+      const newUsed = item.used + amount;
+
+      if (newUsed > item.max && item.max < 999) {
+        isAllowed = false;
+        pushCoachMessage({
+          type: 'alert',
+          message: `Limit reached: You've used all ${item.max} ${type.replace(/([A-Z])/g, ' $1').toLowerCase()} included in your plan.`,
+          actionText: 'Upgrade Plan',
+          actionTab: 'pricing'
+        });
+        return prev;
+      }
+
+      if (newUsed >= Math.floor(item.max * 0.8) && item.max < 999) {
+        pushCoachMessage({
+          type: 'recommendation',
+          message: `Notice: You have used ${newUsed}/${item.max} of your monthly ${type.replace(/([A-Z])/g, ' $1').toLowerCase()}. Upgrade to Pro for unlimited usage.`,
+          actionText: 'Upgrade to Pro',
+          actionTab: 'pricing'
+        });
+      }
+
+      const updatedLimits = {
+        ...currentLimits,
+        [type]: { ...item, used: newUsed }
+      };
+
+      return { ...prev, usageLimits: updatedLimits };
+    });
+
+    return isAllowed;
+  };
+
   const dailyBriefingData: DailyBriefingData = {
     greetingName: profile.name,
     newMatchingJobsCount: recommendations.filter(j => j.matchScore >= 85).length,
@@ -606,7 +652,8 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         recordFocusSession,
         generateAiDailySchedule,
         updateProdSettings,
-        toggleIntegration
+        toggleIntegration,
+        recordUsage
       }}
     >
       {children}
