@@ -38,6 +38,7 @@ interface EcosystemContextType {
   setApplications: React.Dispatch<React.SetStateAction<ApplicationCard[]>>;
   notifications: NotificationItem[];
   setNotifications: React.Dispatch<React.SetStateAction<NotificationItem[]>>;
+  addNotification: (notif: { title: string; message: string; type?: 'info' | 'success' | 'warning' | 'alert' }) => void;
   calendarEvents: CalendarEvent[];
   setCalendarEvents: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
   
@@ -124,8 +125,32 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const [recommendations, setRecommendations] = useState<JobRecommendation[]>(initialJobRecommendations);
   const [activities, setActivities] = useState<ActivityLog[]>(initialActivityLogs);
   const [applications, setApplications] = useState<ApplicationCard[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(sampleNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('hireflow_notifications_v1');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => CalendarService.getEvents());
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hireflow_notifications_v1', JSON.stringify(notifications));
+    } catch (e) {}
+  }, [notifications]);
+
+  const addNotification = (notif: { title: string; message: string; type?: 'info' | 'success' | 'warning' | 'alert' }) => {
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      title: notif.title,
+      message: notif.message,
+      time: 'Just now',
+      read: false,
+      type: notif.type || 'info'
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
 
   // Productivity & Collaboration State
   const [prodTasks, setProdTasks] = useState<ProductivityTask[]>(() => ProductivityService.getTasks());
@@ -139,22 +164,14 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   // Modals & Coach
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [isDailyBriefingOpen, setIsDailyBriefingOpen] = useState(false);
-  const [coachMessages, setCoachMessages] = useState<ProactiveCoachMessage[]>([
+  const [coachMessages, setCoachMessages] = useState<ProactiveCoachMessage[]>(() => [
     {
       id: 'coach_init_1',
       type: 'recommendation',
-      message: `Welcome back ${profile.name}! Your ATS Score is ${profile.atsScore}%. Mastering Docker could boost your job match score by +8%.`,
-      actionText: 'View Career Roadmap',
-      actionTab: 'career-tools',
+      message: `Welcome back ${profile.name || 'User'}! Your ATS Score is ${profile.atsScore || 0}%. Upload your latest resume to boost your job match score.`,
+      actionText: 'View Resume Suite',
+      actionTab: 'resume-suite',
       timestamp: 'Just now'
-    },
-    {
-      id: 'coach_init_2',
-      type: 'milestone',
-      message: `You have 1 upcoming technical interview scheduled for tomorrow at Apple.`,
-      actionText: 'Practice Mock Interview',
-      actionTab: 'interviews',
-      timestamp: '5 min ago'
     }
   ]);
 
@@ -360,6 +377,22 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>) => {
     CalendarService.addEvent(event);
     setCalendarEvents(CalendarService.getEvents());
+
+    // Generate notification for scheduled events
+    const isInterview = event.type === 'interview' || event.type === 'mock_interview' || event.title.toLowerCase().includes('interview');
+    if (isInterview) {
+      addNotification({
+        title: 'Interview tomorrow',
+        message: `You have an interview scheduled for tomorrow: ${event.title} (${event.company || 'Google'}).`,
+        type: 'warning'
+      });
+    } else {
+      addNotification({
+        title: 'Event Scheduled',
+        message: `Scheduled event: ${event.title} on ${event.date || 'Tomorrow'}.`,
+        type: 'info'
+      });
+    }
   };
 
   const updateCalendarEvent = (event: CalendarEvent) => {
@@ -596,6 +629,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         setApplications,
         notifications,
         setNotifications,
+        addNotification,
         calendarEvents,
         setCalendarEvents,
         prodTasks,

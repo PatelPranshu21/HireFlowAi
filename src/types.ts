@@ -126,6 +126,7 @@ export interface CentralCareerProfile {
   avatar: string;
   title: string;
   experienceLevel: string;
+  timezone?: string;
   linkedInUrl?: string;
   gitHubUrl?: string;
   portfolioUrl?: string;
@@ -711,5 +712,5 @@ export interface NotificationItem {
   message: string;
   time: string;
   read: boolean;
-  type: 'alert' | 'success' | 'info';
+  type: 'alert' | 'success' | 'info' | 'warning';
 }

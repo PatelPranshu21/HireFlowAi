@@ -4,6 +4,7 @@ import { useEcosystem } from '../../context/EcosystemContext';
 
 export const AiPlannerTab: React.FC = () => {
   const {
+    profile,
     calendarEvents,
     prodTasks,
     prodGoals,
@@ -124,17 +125,40 @@ export const AiPlannerTab: React.FC = () => {
           <div className="p-4 rounded-xl bg-[#571bc1]/10 border border-[#571bc1]/30 text-xs font-mono text-white leading-relaxed space-y-2">
             <p className="font-bold text-[#d0bcff]">🤖 AI Agent Strategic Rationale:</p>
             <p className="text-[#c3c5d9]">
-              "Based on your upcoming Apple Technical Interview tomorrow and your goal to solve 20 DSA problems this week, I've prioritized an morning STAR interview prep session followed by an afternoon Focus Mode LeetCode session."
+              {calendarEvents.length > 0 
+                ? `"Analyzing ${calendarEvents.length} scheduled calendar event(s) and your target focus on '${targetFocus}'. I've prioritized interview practice sessions and high-impact resume/application tasks within your ${maxHours}-hour limit."`
+                : `"Analyzing your user profile (${profile.title || 'Software Engineer'}, ATS Score: ${profile.atsScore || 0}%) and target focus on '${targetFocus}'. I've structured a focused ${maxHours}-hour daily workflow targeting high-match job applications, DSA preparation, and ATS bullet refinement."`
+              }
             </p>
           </div>
 
-          {/* Sample Blocks */}
+          {/* Dynamic Blocks */}
           <div className="space-y-3">
             {[
-              { time: '09:00 AM - 10:00 AM', title: 'System Design & STAR Interview Practice', category: 'Interview', badge: 'High Priority' },
-              { time: '10:30 AM - 11:15 AM', title: 'ATS Resume Bullet Customization for Apple', category: 'Resume', badge: 'Medium Priority' },
-              { time: '02:00 PM - 03:00 PM', title: 'Focus Mode: LeetCode Hard Dynamic Programming', category: 'Learning', badge: 'High Priority' },
-              { time: '04:00 PM - 04:45 PM', title: 'Submit 3 Tailored Applications (Stripe, Apple, Figma)', category: 'Applications', badge: 'Medium Priority' }
+              { 
+                time: '09:00 AM - 10:30 AM', 
+                title: calendarEvents[0]?.title ? `Prepare for: ${calendarEvents[0].title}` : `Core Skill Prep: ${targetFocus}`, 
+                category: calendarEvents[0]?.title ? 'Interview' : 'Preparation', 
+                badge: 'High Priority' 
+              },
+              { 
+                time: '11:00 AM - 12:00 PM', 
+                title: `ATS Resume Optimization & Bullet Refinement (Current ATS: ${profile.atsScore || 0}%)`, 
+                category: 'Resume Suite', 
+                badge: 'High Priority' 
+              },
+              { 
+                time: '02:00 PM - 03:30 PM', 
+                title: prodTasks.find(t => !t.completed)?.title || `Focus Session: ${profile.targetRole || 'Software Engineering'} Practice`, 
+                category: 'Tasks & Focus', 
+                badge: 'Medium Priority' 
+              },
+              { 
+                time: '04:00 PM - 05:00 PM', 
+                title: `Tailored Job Applications & Network Follow-ups`, 
+                category: 'Applications', 
+                badge: 'Medium Priority' 
+              }
             ].map((item, idx) => (
               <div key={idx} className="p-4 bg-[#13151f] rounded-xl border border-[#434656]/30 flex flex-wrap justify-between items-center gap-3">
                 <div className="flex items-center gap-3">

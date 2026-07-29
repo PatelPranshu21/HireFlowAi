@@ -59,7 +59,8 @@ function MainAppContent() {
     uploadResume,
     applyBulletSuggestion,
     updateProfileDetails,
-    markAllNotificationsRead
+    markAllNotificationsRead,
+    addNotification
   } = useEcosystem();
 
   // Expose global modal triggers for top nav search bar & briefing button
@@ -163,6 +164,12 @@ function MainAppContent() {
       hasSelectedPlan: true
     });
 
+    addNotification({
+      title: 'Trial expires tomorrow',
+      message: 'Your 3-Day Free Trial is active and will expire tomorrow. Upgrade to Pro anytime for unlimited access.',
+      type: 'warning'
+    });
+
     handleNavigate('dashboard');
   };
 
@@ -179,6 +186,12 @@ function MainAppContent() {
       hasSelectedPlan: true,
       nextBillingDate: '2026-08-25',
       transactionHistory: [transaction, ...(profile.transactionHistory || [])]
+    });
+
+    addNotification({
+      title: 'Subscription activated',
+      message: `Your ${planName} Plan subscription has been activated! All premium AI features are now unlocked.`,
+      type: 'success'
     });
 
     handleNavigate('dashboard');
@@ -268,6 +281,7 @@ function MainAppContent() {
               activities={activities}
               onNavigateTab={handleNavigate}
               onAnalyzeResumeClick={() => handleNavigate('resume-suite')}
+              onUpdateUser={updateProfileDetails}
             />
           )}
 
@@ -306,7 +320,11 @@ function MainAppContent() {
           )}
 
           {currentTab === 'career-tools' && (
-            <CareerToolsView user={profile} />
+            <CareerToolsView 
+              user={profile} 
+              onNavigateTab={handleNavigate}
+              onUploadResumeClick={() => handleNavigate('resume-suite')}
+            />
           )}
 
           {currentTab === 'calendar' && (

@@ -132,6 +132,16 @@ export const InterviewsView: React.FC<InterviewsViewProps> = ({
 
   const handleAddEvent = (evt: any) => {
     setScheduledEvents(prev => [evt, ...prev]);
+    if (ecosystem?.addCalendarEvent) {
+      ecosystem.addCalendarEvent({
+        title: evt.title,
+        company: evt.company,
+        date: evt.date,
+        time: evt.time,
+        type: 'interview',
+        description: `Scheduled interview for ${evt.company || 'Company'}`
+      });
+    }
   };
 
   return (

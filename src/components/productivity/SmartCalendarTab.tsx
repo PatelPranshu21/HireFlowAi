@@ -155,15 +155,30 @@ export const SmartCalendarTab: React.FC = () => {
       </div>
 
       {/* View Mode Rendering */}
-      {viewMode === 'agenda' ? (
+      {filteredEvents.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center py-16 px-6 bg-[#191b25] rounded-2xl border border-[#434656]/20 space-y-4">
+          <div className="w-14 h-14 rounded-full bg-[#11131c] border border-[#0052ff]/30 flex items-center justify-center text-[#0052ff] shadow-inner">
+            <CalendarIcon className="w-7 h-7" />
+          </div>
+          <div className="max-w-md space-y-1">
+            <h3 className="text-base font-bold text-white font-geist">Calendar is Empty</h3>
+            <p className="text-xs text-[#c3c5d9] leading-relaxed">
+              Events will appear here automatically when you schedule an interview, assessment date, application reminder, follow-up reminder, or create custom events.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedEvent(null);
+              setIsModalOpen(true);
+            }}
+            className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white font-mono text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md mt-2"
+          >
+            <Plus className="w-4 h-4" /> Add Event
+          </button>
+        </div>
+      ) : viewMode === 'agenda' ? (
         <div className="space-y-3">
-          {filteredEvents.length === 0 ? (
-            <div className="text-center py-12 bg-[#191b25] rounded-2xl border border-[#434656]/20">
-              <CalendarIcon className="w-10 h-10 text-[#434656] mx-auto mb-3" />
-              <p className="text-sm font-geist text-[#c3c5d9]">No calendar events match the current filter.</p>
-            </div>
-          ) : (
-            filteredEvents.map(evt => (
+          {filteredEvents.map(evt => (
               <div
                 key={evt.id}
                 className={`bg-[#191b25] border border-[#434656]/30 hover:border-[#0052ff]/50 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 transition-all ${
@@ -239,7 +254,7 @@ export const SmartCalendarTab: React.FC = () => {
                 </div>
               </div>
             ))
-          )}
+          }
         </div>
       ) : (
         /* Week / Grid View */

@@ -11,48 +11,7 @@ export class CalendarService {
       // Fallback
     }
 
-    const defaultEvents: CalendarEvent[] = [
-      {
-        id: 'evt_1',
-        title: 'Senior Software Engineer Round 2 Technical Interview',
-        company: 'Apple',
-        jobId: 'job_1',
-        date: 'Tomorrow',
-        time: '2:00 PM',
-        type: 'interview',
-        description: 'Deep dive into distributed systems streaming and System Design architecture.',
-        completed: false
-      },
-      {
-        id: 'evt_2',
-        title: 'Stripe Staff Infrastructure Take-Home Deadline',
-        company: 'Stripe',
-        jobId: 'job_2',
-        date: 'In 2 days',
-        time: '11:59 PM',
-        type: 'deadline',
-        description: 'Submit payment gateway microservice routing repository.',
-        completed: false
-      },
-      {
-        id: 'evt_3',
-        title: 'Docker & Microservices Orchestration Study Session',
-        date: 'Friday',
-        time: '10:00 AM',
-        type: 'study_session',
-        description: 'Complete hands-on container networking & docker-compose lab.',
-        completed: false
-      },
-      {
-        id: 'evt_4',
-        title: 'System Design Mock Interview & STAR Refinement',
-        date: 'Saturday',
-        time: '4:00 PM',
-        type: 'mock_interview',
-        description: 'Practice high-scale database partitioning and rate limiting.',
-        completed: false
-      }
-    ];
+    const defaultEvents: CalendarEvent[] = [];
 
     return defaultEvents;
   }

@@ -35,28 +35,40 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-          {notifications.map((item) => (
-            <div 
-              key={item.id}
-              className={`p-4 rounded-xl border transition-colors ${
-                item.read 
-                  ? 'bg-[#191b25]/60 border-[#434656]/20' 
-                  : 'bg-[#191b25] border-[#0052ff]/40 ai-gradient-border'
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                {item.type === 'alert' && <AlertTriangle className="w-5 h-5 text-[#ffb4ab] shrink-0 mt-0.5" />}
-                {item.type === 'success' && <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />}
-                {item.type === 'info' && <Info className="w-5 h-5 text-[#4cd7f6] shrink-0 mt-0.5" />}
+          {notifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center py-20 px-4 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-[#11131c] border border-[#434656]/30 flex items-center justify-center text-[#8d90a2]">
+                <Bell className="w-6 h-6 text-[#8d90a2]" />
+              </div>
+              <h4 className="text-sm font-bold text-white font-geist">No Notifications Yet</h4>
+              <p className="text-xs text-[#8d90a2] max-w-xs leading-relaxed">
+                Notifications generate automatically from your real career activities (analyzing resumes, submitting job applications, scheduling interviews, and managing subscriptions).
+              </p>
+            </div>
+          ) : (
+            notifications.map((item) => (
+              <div 
+                key={item.id}
+                className={`p-4 rounded-xl border transition-colors ${
+                  item.read 
+                    ? 'bg-[#191b25]/60 border-[#434656]/20' 
+                    : 'bg-[#191b25] border-[#0052ff]/40 ai-gradient-border'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {(item.type === 'alert' || item.type === 'warning') && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />}
+                  {item.type === 'success' && <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />}
+                  {item.type === 'info' && <Info className="w-5 h-5 text-[#4cd7f6] shrink-0 mt-0.5" />}
 
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-[#e1e1ef] font-geist">{item.title}</h4>
-                  <p className="text-xs text-[#c3c5d9] mt-1 leading-relaxed">{item.message}</p>
-                  <span className="text-[10px] font-mono text-[#8d90a2] mt-2 block">{item.time}</span>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-[#e1e1ef] font-geist">{item.title}</h4>
+                    <p className="text-xs text-[#c3c5d9] mt-1 leading-relaxed">{item.message}</p>
+                    <span className="text-[10px] font-mono text-[#8d90a2] mt-2 block">{item.time}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

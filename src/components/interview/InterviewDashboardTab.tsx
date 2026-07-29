@@ -282,8 +282,8 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
                     <Code className="w-4 h-4 text-[#4cd7f6]" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Solve 2 Dynamic Programming Problems</h4>
-                    <p className="text-xs text-[#c3c5d9] mt-0.5">Your weakness in 2D grid DP is holding back your Google readiness by 8 points.</p>
+                    <h4 className="text-sm font-bold text-white">Solve 2 Technical Coding / Algorithm Problems</h4>
+                    <p className="text-xs text-[#c3c5d9] mt-0.5">Targeting {user?.targetRole || user?.title || 'Software Engineering'} roles requires strong problem-solving skills.</p>
                   </div>
                 </div>
                 <button
@@ -300,8 +300,8 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
                     <MessageSquare className="w-4 h-4 text-[#d0bcff]" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Refine STAR Conflict Resolution Story</h4>
-                    <p className="text-xs text-[#c3c5d9] mt-0.5">Amazon and Microsoft interviews weight conflict management STAR stories heavily.</p>
+                    <h4 className="text-sm font-bold text-white">Refine STAR Behavioral Response</h4>
+                    <p className="text-xs text-[#c3c5d9] mt-0.5">Top tech hiring managers weight conflict management STAR responses heavily during HR interviews.</p>
                   </div>
                 </div>
                 <button

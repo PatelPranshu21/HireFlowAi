@@ -75,8 +75,8 @@ export class WorkflowEngine {
     // 6. Push Notification
     const newNotification: NotificationItem = {
       id: `notif_${Date.now()}`,
-      title: 'Resume Suite & Ecosystem Updated',
-      message: `Your ATS Score increased to ${newAtsScore}%. ${refreshedJobs.filter(j => j.matchScore >= 90).length} high-match job opportunities updated!`,
+      title: 'Resume analysed',
+      message: `Your resume "${fileName}" was analysed. ATS Score: ${newAtsScore}%. ${refreshedJobs.filter(j => j.matchScore >= 90).length} high-match job opportunities updated!`,
       time: 'Just now',
       read: false,
       type: 'success'
@@ -184,11 +184,11 @@ export class WorkflowEngine {
     // 6. Push Notification
     const newNotif: NotificationItem = {
       id: `notif_${Date.now()}`,
-      title: `Interview Prep Plan Generated for ${job.company}`,
-      message: `Automated study sessions, technical interview questions, and calendar reminders created for ${job.title}.`,
+      title: 'Application submitted',
+      message: `Your application for ${job.title} at ${job.company} has been submitted. Automated study sessions and interview reminders created.`,
       time: 'Just now',
       read: false,
-      type: 'info'
+      type: 'success'
     };
 
     // 7. Activity Log

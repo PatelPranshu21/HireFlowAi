@@ -24,6 +24,7 @@ export const initialUserProfile: UserProfile = {
   avatar: '',
   title: 'Software Engineer',
   experienceLevel: 'Mid Level',
+  timezone: 'America/Los_Angeles (Pacific Time)',
   linkedInUrl: '',
   gitHubUrl: '',
   portfolioUrl: '',
@@ -121,16 +122,7 @@ export const initialJobRecommendations: JobRecommendation[] = mockJobsList;
 
 export const initialActivityLogs: ActivityLog[] = [];
 
-export const sampleNotifications: NotificationItem[] = [
-  {
-    id: 'notif_welcome',
-    title: 'Welcome to HireFlow AI',
-    message: 'Upload your resume to unlock AI ATS scoring and personalized job recommendations.',
-    time: 'Just now',
-    read: false,
-    type: 'info'
-  }
-];
+export const sampleNotifications: NotificationItem[] = [];
 
 export const defaultResumeAnalysis: ResumeAnalysisResult = {
   overallScore: 0,
