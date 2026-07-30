@@ -241,7 +241,7 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
                   <div key={app.id} className="bg-[#11131c] border border-[#434656]/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 hover:border-[#0052ff]/50 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-[#282934] overflow-hidden flex items-center justify-center shrink-0 border border-[#434656]/30">
-                        {app.companyLogo ? (
+                        {app.companyLogo && app.companyLogo.trim().length > 0 ? (
                           <img src={app.companyLogo} alt={app.company} className="w-full h-full object-cover" />
                         ) : (
                           <Building2 className="w-5 h-5 text-[#b7c4ff]" />

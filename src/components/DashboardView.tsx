@@ -64,8 +64,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const hasResume = Boolean(
     (user.resumeVersions && user.resumeVersions.length > 0) ||
-    (user.resumeText && user.resumeText.trim().length > 0) ||
-    (user.atsScore || 0) > 0
+    (user.resumeText && user.resumeText.trim().length > 0)
   );
 
   const hasProfile = Boolean(user.name && user.email && user.title && user.location);

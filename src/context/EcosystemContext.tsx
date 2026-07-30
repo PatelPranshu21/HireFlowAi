@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from './AuthContext';
 import {
   CentralCareerProfile,
   JobRecommendation,
@@ -113,13 +114,18 @@ interface EcosystemContextType {
 const EcosystemContext = createContext<EcosystemContextType | null>(null);
 
 export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigateTab: (tab: NavigationTab) => void }> = ({ children, onNavigateTab }) => {
-  const [profile, setProfile] = useState<CentralCareerProfile>(() => {
-    try {
-      const saved = localStorage.getItem('hireflow_central_profile_v1');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return initialUserProfile;
-  });
+  const { state: authState, updateProfile: authUpdateProfile } = useAuth();
+
+  const profile = authState.profile || initialUserProfile;
+
+  const setProfile = (action: React.SetStateAction<CentralCareerProfile>) => {
+    if (typeof action === 'function') {
+      const next = action(profile);
+      authUpdateProfile(next);
+    } else {
+      authUpdateProfile(action);
+    }
+  };
 
   const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
   const [recommendations, setRecommendations] = useState<JobRecommendation[]>(initialJobRecommendations);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResumeAnalysisResult, ResumeVersion, UserProfile, ParsedResumeData, AiImprovementSuggestion } from '../types';
 import { 
   BarChart3, 
@@ -50,9 +50,25 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
     'dashboard' | 'ats-score' | 'section-analysis' | 'ai-improvements' | 'keywords' | 'tailoring' | 'versions' | 'builder' | 'analytics'
   >('dashboard');
 
-  const [versions, setVersions] = useState<ResumeVersion[]>(initialVersions);
-  const [activeVersionId, setActiveVersionId] = useState<string>(initialVersions[0]?.id || 'v1');
+  const [versions, setVersions] = useState<ResumeVersion[]>(
+    user?.resumeVersions?.length ? user.resumeVersions : (initialVersions || [])
+  );
+  const [activeVersionId, setActiveVersionId] = useState<string>(
+    user?.resumeVersions?.[0]?.id || initialVersions?.[0]?.id || ''
+  );
   const [analysis, setAnalysis] = useState<ResumeAnalysisResult>(initialAnalysis);
+
+  useEffect(() => {
+    const available = user?.resumeVersions?.length 
+      ? user.resumeVersions 
+      : (initialVersions || []);
+    setVersions(available);
+    if (available.length > 0) {
+      setActiveVersionId(prev => available.some(v => v.id === prev) ? prev : available[0].id);
+    } else {
+      setActiveVersionId('');
+    }
+  }, [user?.resumeVersions, initialVersions]);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isCoachDrawerOpen, setIsCoachDrawerOpen] = useState(false);

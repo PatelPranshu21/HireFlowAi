@@ -111,7 +111,13 @@ export const CompanyPrepTab: React.FC<CompanyPrepTabProps> = ({ onStartCompanyMo
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2.5">
-                    <img src={comp.logo} alt={comp.name} className="w-8 h-8 rounded-lg object-cover border border-[#434656]/30" />
+                    {comp.logo ? (
+                      <img src={comp.logo} alt={comp.name} className="w-8 h-8 rounded-lg object-cover border border-[#434656]/30" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-[#0052ff]/10 text-[#4cd7f6] flex items-center justify-center font-bold text-xs border border-[#434656]/30">
+                        {comp.name?.charAt(0) || 'C'}
+                      </div>
+                    )}
                     <div>
                       <h3 className="text-sm font-bold font-geist text-white">{comp.name}</h3>
                       <span className="text-[10px] font-mono text-[#c3c5d9]">{comp.category}</span>
@@ -140,7 +146,13 @@ export const CompanyPrepTab: React.FC<CompanyPrepTabProps> = ({ onStartCompanyMo
             {/* Profile Header */}
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#434656]/20 pb-6">
               <div className="flex items-center gap-4">
-                <img src={selectedCompany.logo} alt={selectedCompany.name} className="w-14 h-14 rounded-2xl object-cover border border-[#434656]/40" />
+                {selectedCompany.logo ? (
+                  <img src={selectedCompany.logo} alt={selectedCompany.name} className="w-14 h-14 rounded-2xl object-cover border border-[#434656]/40" />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-[#0052ff]/10 text-[#4cd7f6] flex items-center justify-center font-bold text-lg border border-[#434656]/40">
+                    {selectedCompany.name?.charAt(0) || 'C'}
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-2xl font-bold font-geist text-white">{selectedCompany.name}</h2>

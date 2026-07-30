@@ -84,9 +84,8 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   // Check if a resume exists and has been analyzed
   const hasResume = useMemo(() => {
     return !!(
-      resumeText?.trim() ||
-      user?.resumeText?.trim() ||
-      ((user?.atsScore || 0) > 0) ||
+      (resumeText && resumeText.trim().length > 0) ||
+      (user?.resumeText && user.resumeText.trim().length > 0) ||
       (user?.resumeVersions && user.resumeVersions.length > 0)
     );
   }, [resumeText, user]);
@@ -99,8 +98,8 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
 
   // Saved Jobs State
-  const [savedJobIds, setSavedJobIds] = useState<string[]>(user?.savedJobIds || ['job_google_1', 'job_openai_1', 'job_atlassian_1']);
-  
+  const [savedJobIds, setSavedJobIds] = useState<string[]>(user?.savedJobIds || []);
+
   // Hidden Jobs State
   const [hiddenJobIds, setHiddenJobIds] = useState<string[]>(user?.hiddenJobIds || []);
 
@@ -109,10 +108,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   const [showCompareModal, setShowCompareModal] = useState(false);
 
   // Job Notes State (jobId -> string)
-  const [jobNotes, setJobNotes] = useState<Record<string, string>>({
-    'job_openai_1': 'Tailor resume bullets to emphasize model serving performance and streaming APIs.',
-    'job_google_1': 'Referred by Sarah Jenkins. Prepare C++ concurrency and Paxos consensus basics.'
-  });
+  const [jobNotes, setJobNotes] = useState<Record<string, string>>({});
 
   // Modal States
   const [selectedJobDetails, setSelectedJobDetails] = useState<JobRecommendation | null>(null);
@@ -149,7 +145,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
     tier: '3-Day Free Trial',
     subscriptionPlan: '3-Day Free Trial',
     subscriptionStatus: 'trialing',
-    atsScore: 88,
+    atsScore: 0,
     targetRole: 'Software Engineering'
   };
 
@@ -714,15 +710,24 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3.5">
-                            <img
-                              src={job.companyLogo}
-                              alt={job.company}
-                              className="w-12 h-12 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 shrink-0 cursor-pointer"
-                              onClick={() => handleOpenCompanyByName(job.company)}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120';
-                              }}
-                            />
+                            {job.companyLogo && job.companyLogo.trim().length > 0 ? (
+                              <img
+                                src={job.companyLogo}
+                                alt={job.company}
+                                className="w-12 h-12 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 shrink-0 cursor-pointer"
+                                onClick={() => handleOpenCompanyByName(job.company)}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120';
+                                }}
+                              />
+                            ) : (
+                              <div
+                                className="w-12 h-12 rounded-xl bg-[#11131c] border border-[#434656]/40 p-1 shrink-0 cursor-pointer flex items-center justify-center text-[#4cd7f6] font-bold"
+                                onClick={() => handleOpenCompanyByName(job.company)}
+                              >
+                                {job.company?.charAt(0) || 'C'}
+                              </div>
+                            )}
                             <div>
                               <button
                                 onClick={() => handleOpenCompanyByName(job.company)}
@@ -899,12 +904,21 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={job.companyLogo}
-                              alt={job.company}
-                              className="w-12 h-12 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer"
-                              onClick={() => handleOpenCompanyByName(job.company)}
-                            />
+                            {job.companyLogo && job.companyLogo.trim().length > 0 ? (
+                              <img
+                                src={job.companyLogo}
+                                alt={job.company}
+                                className="w-12 h-12 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer"
+                                onClick={() => handleOpenCompanyByName(job.company)}
+                              />
+                            ) : (
+                              <div
+                                className="w-12 h-12 rounded-xl bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer flex items-center justify-center text-[#4cd7f6] font-bold"
+                                onClick={() => handleOpenCompanyByName(job.company)}
+                              >
+                                {job.company?.charAt(0) || 'C'}
+                              </div>
+                            )}
                             <div>
                               <button
                                 onClick={() => handleOpenCompanyByName(job.company)}

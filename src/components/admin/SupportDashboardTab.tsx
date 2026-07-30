@@ -116,7 +116,13 @@ export const SupportDashboardTab: React.FC<SupportDashboardTabProps> = ({
               <div>
                 <div className="flex justify-between items-start border-b border-[#434656]/30 pb-3 mb-4">
                   <div className="flex items-center gap-3">
-                    <img src={selectedTicket.userAvatar} alt="" className="w-10 h-10 rounded-full object-cover border border-[#434656]" />
+                    {selectedTicket.userAvatar ? (
+                      <img src={selectedTicket.userAvatar} alt="" className="w-10 h-10 rounded-full object-cover border border-[#434656]" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm border border-[#434656]">
+                        {selectedTicket.userName?.charAt(0) || 'U'}
+                      </div>
+                    )}
                     <div>
                       <h3 className="text-base font-bold font-geist text-white">{selectedTicket.subject}</h3>
                       <p className="text-xs font-mono text-[#8d90a2]">{selectedTicket.userName} ({selectedTicket.userEmail})</p>

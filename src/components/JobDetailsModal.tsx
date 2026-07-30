@@ -68,12 +68,21 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <img 
-              src={job.companyLogo} 
-              alt={job.company} 
-              className="w-14 h-14 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer"
-              onClick={() => onOpenCompany(job.company)}
-            />
+            {job.companyLogo && job.companyLogo.trim().length > 0 ? (
+              <img 
+                src={job.companyLogo} 
+                alt={job.company} 
+                className="w-14 h-14 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer"
+                onClick={() => onOpenCompany(job.company)}
+              />
+            ) : (
+              <div 
+                className="w-14 h-14 rounded-xl bg-[#11131c] border border-[#434656]/40 p-1 cursor-pointer flex items-center justify-center text-[#4cd7f6] font-bold text-lg shrink-0"
+                onClick={() => onOpenCompany(job.company)}
+              >
+                {job.company?.charAt(0) || 'C'}
+              </div>
+            )}
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl sm:text-2xl font-bold font-geist text-white">{job.title}</h2>

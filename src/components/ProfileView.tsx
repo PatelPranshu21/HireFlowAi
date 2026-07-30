@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
+import { UserAvatar } from '../utils/userUtils';
 import { User, Mail, Briefcase, Award, Linkedin, Github, FileText, Check, Edit3, Sparkles } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -13,9 +14,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdateUser, on
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [email, setEmail] = useState(user.email);
-  const [targetRole, setTargetRole] = useState(user.targetRole || 'Senior Full-Stack Engineer');
-  const [experienceLevel, setExperienceLevel] = useState(user.experienceLevel || '5+ Years (Mid-Senior)');
-  const [linkedIn, setLinkedIn] = useState(user.linkedInUrl || 'https://linkedin.com/in/alex-morgan');
+  const [targetRole, setTargetRole] = useState(user.targetRole || 'Software Engineer');
+  const [experienceLevel, setExperienceLevel] = useState(user.experienceLevel || 'Mid Level');
+  const [linkedIn, setLinkedIn] = useState(user.linkedInUrl || '');
   const [saved, setSaved] = useState(false);
 
   const skills = ['TypeScript', 'React 19', 'Node.js', 'Express', 'Python', 'AWS Cloud', 'PostgreSQL', 'Docker', 'System Design'];
@@ -41,11 +42,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdateUser, on
       <div className="bg-[#191b25] border border-[#434656]/30 rounded-3xl p-8 relative overflow-hidden ai-gradient-border">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
           <div className="flex items-center gap-6">
-            <img 
-              src={user.avatar} 
-              alt={user.name} 
-              className="w-20 h-20 rounded-full object-cover border-2 border-blue-500 shadow-xl"
-            />
+            <UserAvatar user={user} size="xl" className="border-2 border-blue-500 shadow-xl" />
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-3xl font-bold font-geist text-white">{user.name}</h2>

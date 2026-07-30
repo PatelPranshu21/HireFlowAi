@@ -3,26 +3,28 @@ export interface TrialRemainingTime {
   hours: number;
   totalHours: number;
   isExpired: boolean;
+  isNotStarted: boolean;
   displayText: string;
 }
 
 export const TRIAL_DURATION_HOURS = 72;
 export const TRIAL_DURATION_MS = TRIAL_DURATION_HOURS * 60 * 60 * 1000;
 
-export function calculateTrialRemaining(trialStartDate?: string, trialExpiryDate?: string): TrialRemainingTime {
-  if (!trialExpiryDate) {
+export function calculateTrialRemaining(trialStartDate?: string | null, trialExpiryDate?: string | null): TrialRemainingTime {
+  if (!trialStartDate || !trialExpiryDate) {
     return {
-      days: 0,
+      days: 3,
       hours: 0,
-      totalHours: 0,
-      isExpired: true,
-      displayText: 'Trial Expired'
+      totalHours: 72,
+      isExpired: false,
+      isNotStarted: true,
+      displayText: '3 Days Remaining'
     };
   }
 
   const now = Date.now();
   const expiryTime = new Date(trialExpiryDate).getTime();
-  const startTime = trialStartDate ? new Date(trialStartDate).getTime() : expiryTime - TRIAL_DURATION_MS;
+  const startTime = new Date(trialStartDate).getTime();
 
   const diffMs = expiryTime - now;
 
@@ -32,19 +34,15 @@ export function calculateTrialRemaining(trialStartDate?: string, trialExpiryDate
       hours: 0,
       totalHours: 0,
       isExpired: true,
+      isNotStarted: false,
       displayText: 'Trial Expired'
     };
   }
 
-  // Calculate elapsed time in full hours since trial start
-  const elapsedMs = Math.max(0, now - startTime);
-  const hoursElapsed = Math.floor(elapsedMs / (1000 * 60 * 60));
-
-  // Remaining hours from the original 72-hour period (max 72)
-  const totalHoursRemaining = Math.max(1, TRIAL_DURATION_HOURS - hoursElapsed);
-
-  const days = Math.floor(totalHoursRemaining / 24);
-  const hours = totalHoursRemaining % 24;
+  // Calculate remaining time
+  const hoursRemaining = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60)));
+  const days = Math.floor(hoursRemaining / 24);
+  const hours = hoursRemaining % 24;
 
   let displayText = '';
   if (days === 3) {
@@ -62,8 +60,9 @@ export function calculateTrialRemaining(trialStartDate?: string, trialExpiryDate
   return {
     days,
     hours,
-    totalHours: totalHoursRemaining,
+    totalHours: hoursRemaining,
     isExpired: false,
+    isNotStarted: false,
     displayText
   };
 }

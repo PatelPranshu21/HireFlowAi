@@ -23,6 +23,7 @@ import {
 } from './data/mockData';
 
 import { EcosystemProvider, useEcosystem } from './context/EcosystemContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { AiCareerCoachWidget } from './components/AiCareerCoachWidget';
 import { DailyBriefingModal } from './components/DailyBriefingModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
@@ -85,8 +86,8 @@ function MainAppContent() {
     billingCycle: 'monthly'
   });
 
+  const userVersions = profile.resumeVersions || [];
   const [analysis] = useState<ResumeAnalysisResult>(defaultResumeAnalysis);
-  const [versions] = useState<ResumeVersion[]>(defaultResumeVersions);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [authRedirectMessage, setAuthRedirectMessage] = useState<string>('');
 
@@ -133,7 +134,10 @@ function MainAppContent() {
     setIsMobileMenuOpen(false);
   };
 
+  const { state: authState, login, logout } = useAuth();
+
   const handleLogout = () => {
+    logout();
     setIsAuthenticated(false);
     handleNavigate('landing');
   };
@@ -141,7 +145,10 @@ function MainAppContent() {
   const handleLoginSuccess = (userProfile?: UserProfile) => {
     setIsAuthenticated(true);
     if (userProfile) {
+      login(userProfile);
       updateProfileDetails(userProfile);
+    } else {
+      login();
     }
     if (!profile.hasSelectedPlan) {
       handleNavigate('pricing');
@@ -211,6 +218,17 @@ function MainAppContent() {
     return (
       <AuthView 
         mode={currentTab}
+        onNavigate={handleNavigate}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
+
+  // If user is unauthenticated or profile is null, force login screen
+  if (!authState.isAuthenticated || !authState.profile) {
+    return (
+      <AuthView 
+        mode="login"
         onNavigate={handleNavigate}
         onLoginSuccess={handleLoginSuccess}
       />
@@ -289,7 +307,7 @@ function MainAppContent() {
             <ResumeSuiteView
               user={profile}
               analysis={analysis}
-              versions={versions}
+              versions={userVersions}
               onUploadResume={uploadResume}
               onApplyBulletSuggestion={applyBulletSuggestion}
               onSelectJobHubTab={() => handleNavigate('job-suite')}
@@ -301,7 +319,7 @@ function MainAppContent() {
               applications={applications}
               onUpdateStatus={() => {}}
               onAddApplication={() => {}}
-              resumeText={versions[0]?.content || ''}
+              resumeText={profile.resumeText || userVersions[0]?.content || ''}
               user={profile}
               onUpdateUser={updateProfileDetails}
               onNavigateTab={handleNavigate}
@@ -315,7 +333,7 @@ function MainAppContent() {
             <InterviewsView
               user={profile}
               applications={applications}
-              versions={versions}
+              versions={userVersions}
             />
           )}
 
@@ -381,11 +399,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
 
   return (
-    <EcosystemProvider onNavigateTab={(tab) => {
-      setActiveTab(tab);
-      window.location.hash = tab;
-    }}>
-      <MainAppContent />
-    </EcosystemProvider>
+    <AuthProvider>
+      <EcosystemProvider onNavigateTab={(tab) => {
+        setActiveTab(tab);
+        window.location.hash = tab;
+      }}>
+        <MainAppContent />
+      </EcosystemProvider>
+    </AuthProvider>
   );
 }

@@ -149,7 +149,13 @@ export const CompanyManagementTab: React.FC<CompanyManagementTabProps> = ({
           <div key={c.id} className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-5 shadow-md flex flex-col justify-between hover:border-[#434656]/60 transition-all">
             <div>
               <div className="flex justify-between items-start mb-3">
-                <img src={c.logo} alt={c.name} className="w-10 h-10 rounded-xl object-cover border border-[#434656]/30" />
+                {c.logo ? (
+                  <img src={c.logo} alt={c.name} className="w-10 h-10 rounded-xl object-cover border border-[#434656]/30" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-[#0052ff]/10 text-[#4cd7f6] flex items-center justify-center font-bold text-sm border border-[#434656]/30">
+                    {c.name?.charAt(0) || 'C'}
+                  </div>
+                )}
                 <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                   c.hiringStatus === 'Hiring Active' 
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'

@@ -60,6 +60,7 @@ export class WorkflowEngine {
     // 3. Update profile draft
     const profileDraft: CentralCareerProfile = {
       ...profile,
+      resumeText: resumeFileText || profile.resumeText || '',
       atsScore: newAtsScore,
       skills: newSkills,
       resumeVersions: updatedVersions

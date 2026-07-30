@@ -164,6 +164,7 @@ export interface CentralCareerProfile {
 
   // Resume Information
   atsScore: number;
+  resumeText?: string;
   resumeVersions: ResumeVersion[];
   resumeHistory: UploadHistoryItem[];
 

@@ -21,7 +21,7 @@ export const initialUserProfile: UserProfile = {
   name: 'Candidate',
   email: 'candidate@hireflow.ai',
   phone: '',
-  avatar: '',
+  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
   title: 'Software Engineer',
   experienceLevel: 'Mid Level',
   timezone: 'America/Los_Angeles (Pacific Time)',
@@ -286,7 +286,7 @@ export const defaultResumeVersions: ResumeVersion[] = [
   {
     id: 'v2',
     versionName: 'Software Engineer - Master',
-    fileName: 'alex_resume_v2.pdf',
+    fileName: 'master_resume_v2.pdf',
     uploadedAt: 'Today, 2:45 PM',
     fileSize: '184 KB',
     score: 85,
@@ -295,8 +295,8 @@ export const defaultResumeVersions: ResumeVersion[] = [
     isTailored: false,
     targetRole: 'Senior Software Engineer',
     parsedData: {
-      fullName: 'Alex Morgan',
-      email: 'alex.dev@hireflow.ai',
+      fullName: 'Parnshu Patel',
+      email: 'pranshupatel3222@gmail.com',
       phone: '+1 (555) 234-5678',
       linkedIn: 'https://linkedin.com/in/alex-dev',
       gitHub: 'https://github.com/alex-dev-lead',

@@ -99,7 +99,7 @@ export const CompareJobsModal: React.FC<CompareJobsModalProps> = ({
                     {/* Role & Company Header */}
                     <div className="pr-8">
                       <div className="flex items-center gap-3 mb-3">
-                        {job.companyLogo ? (
+                        {job.companyLogo && job.companyLogo.trim().length > 0 ? (
                           <img 
                             src={job.companyLogo} 
                             alt={job.company} 

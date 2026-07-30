@@ -230,7 +230,13 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                 <tr key={u.id} className="hover:bg-white/5 transition-colors">
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
-                      <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-full object-cover border border-[#434656]/40" />
+                      {u.avatar ? (
+                        <img src={u.avatar} alt={u.name} className="w-9 h-9 rounded-full object-cover border border-[#434656]/40" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs border border-[#434656]/40">
+                          {u.name?.charAt(0) || 'U'}
+                        </div>
+                      )}
                       <div>
                         <div className="font-bold text-white font-geist flex items-center gap-1.5">
                           {u.name}
@@ -353,7 +359,13 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
           <div className="bg-[#191b25] border border-[#434656]/50 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-6">
             <div className="flex justify-between items-start border-b border-[#434656]/30 pb-4">
               <div className="flex items-center gap-3">
-                <img src={selectedUserForDetail.avatar} alt="" className="w-12 h-12 rounded-full object-cover border border-[#434656]" />
+                {selectedUserForDetail.avatar ? (
+                  <img src={selectedUserForDetail.avatar} alt="" className="w-12 h-12 rounded-full object-cover border border-[#434656]" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-base border border-[#434656]">
+                    {selectedUserForDetail.name?.charAt(0) || 'U'}
+                  </div>
+                )}
                 <div>
                   <h3 className="text-xl font-bold font-geist text-white">{selectedUserForDetail.name}</h3>
                   <p className="text-xs font-mono text-[#8d90a2]">{selectedUserForDetail.email} • {selectedUserForDetail.location}</p>

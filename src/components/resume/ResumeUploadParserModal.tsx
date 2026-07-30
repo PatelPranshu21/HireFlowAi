@@ -33,7 +33,7 @@ interface ResumeUploadParserModalProps {
 const mockUploadHistory: UploadHistoryItem[] = [
   {
     id: 'uh_1',
-    fileName: 'alex_resume_v2.pdf',
+    fileName: 'master_resume_v2.pdf',
     uploadDate: '2026-07-25 14:45',
     fileSize: '184 KB',
     versionName: 'Software Engineer - Master',
@@ -42,7 +42,7 @@ const mockUploadHistory: UploadHistoryItem[] = [
   },
   {
     id: 'uh_2',
-    fileName: 'alex_resume_stripe_frontend.pdf',
+    fileName: 'tailored_stripe_frontend.pdf',
     uploadDate: '2026-07-24 16:15',
     fileSize: '192 KB',
     versionName: 'Tailored Stripe Frontend',
@@ -51,10 +51,10 @@ const mockUploadHistory: UploadHistoryItem[] = [
   },
   {
     id: 'uh_3',
-    fileName: 'alex_resume_v1.docx',
+    fileName: 'master_resume_v1.docx',
     uploadDate: '2026-07-22 09:30',
     fileSize: '142 KB',
-    versionName: 'alex_resume_v1',
+    versionName: 'master_resume_v1',
     parsingStatus: 'Parsed ✓',
     fileType: 'DOCX'
   }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationTab, UserProfile, NotificationItem } from '../types';
+import { UserAvatar } from '../utils/userUtils';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -367,11 +368,7 @@ export const TopNavBar: React.FC<NavigationProps> = ({
           className="ml-2 flex items-center gap-2 p-1 rounded-full border border-white/10 hover:border-blue-500 transition-colors cursor-pointer"
           title="Profile & Settings"
         >
-          <img 
-            src={user.avatar} 
-            alt={user.name} 
-            className="w-8 h-8 rounded-full object-cover border border-white/10"
-          />
+          <UserAvatar user={user} size="sm" />
         </button>
       </div>
     </header>

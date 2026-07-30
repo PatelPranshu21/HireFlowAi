@@ -98,9 +98,9 @@ export const AdminView: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(true); // Default logged in for seamless preview
   const [adminUser, setAdminUser] = useState({
     id: 'adm_master_01',
-    name: 'Alex Vance',
-    email: 'alex.vance@hireflow.ai',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    name: 'Admin Console',
+    email: 'admin@hireflow.ai',
+    avatar: '',
     role: 'Super Admin' as const,
     twoFactorEnabled: true,
     lastLoginIp: '192.168.1.42',
@@ -108,7 +108,7 @@ export const AdminView: React.FC = () => {
   });
 
   // Login Form State
-  const [loginEmail, setLoginEmail] = useState('alex.vance@hireflow.ai');
+  const [loginEmail, setLoginEmail] = useState('admin@hireflow.ai');
   const [loginPassword, setLoginPassword] = useState('••••••••••••');
   const [loginRole, setLoginRole] = useState<'Super Admin' | 'Admin' | 'Auditor'>('Super Admin');
 
@@ -355,7 +355,13 @@ export const AdminView: React.FC = () => {
         {/* Admin Session Profile */}
         <div className="flex items-center gap-3 self-end md:self-auto font-mono text-xs">
           <div className="flex items-center gap-2 bg-[#0c0e17] px-3 py-1.5 rounded-xl border border-[#434656]/30">
-            <img src={adminUser.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-[#434656]" />
+            {adminUser.avatar ? (
+              <img src={adminUser.avatar} alt="" className="w-6 h-6 rounded-full object-cover border border-[#434656]" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px]">
+                {adminUser.name?.charAt(0) || 'A'}
+              </div>
+            )}
             <span className="font-bold text-white font-geist">{adminUser.name}</span>
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
               {adminUser.role}

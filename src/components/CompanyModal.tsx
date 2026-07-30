@@ -22,14 +22,20 @@ export const CompanyModal: React.FC<CompanyModalProps> = ({
         {/* Modal Header */}
         <div className="relative bg-[#212433] p-6 border-b border-[#434656]/30 flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <img 
-              src={company.logo} 
-              alt={company.name} 
-              className="w-16 h-16 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120';
-              }}
-            />
+            {company.logo ? (
+              <img 
+                src={company.logo} 
+                alt={company.name} 
+                className="w-16 h-16 rounded-xl object-cover bg-[#11131c] border border-[#434656]/40 p-1"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120';
+                }}
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-xl bg-[#11131c] border border-[#434656]/40 p-1 flex items-center justify-center text-[#4cd7f6] font-bold text-xl">
+                {company.name?.charAt(0) || 'C'}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-2xl font-bold font-geist text-white">{company.name}</h2>

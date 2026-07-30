@@ -160,7 +160,13 @@ export const JobManagementTab: React.FC<JobManagementTabProps> = ({
                 <tr key={j.id} className="hover:bg-white/5 transition-colors">
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
-                      <img src={j.logo} alt="" className="w-8 h-8 rounded-lg object-cover border border-[#434656]/30" />
+                      {j.logo ? (
+                        <img src={j.logo} alt="" className="w-8 h-8 rounded-lg object-cover border border-[#434656]/30" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-[#0052ff]/10 text-[#4cd7f6] flex items-center justify-center font-bold text-xs border border-[#434656]/30">
+                          {j.company?.charAt(0) || 'J'}
+                        </div>
+                      )}
                       <div>
                         <div className="font-bold text-white font-geist flex items-center gap-1">
                           {j.title}
