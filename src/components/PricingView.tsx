@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, NavigationTab } from '../types';
-import { Check, Zap, Shield, Sparkles, Clock, HelpCircle, X } from 'lucide-react';
+import { Check, Zap, Shield, Sparkles, Clock, HelpCircle, X, AlertTriangle } from 'lucide-react';
+import { calculateTrialRemaining } from '../utils/trialUtils';
 
 interface PricingViewProps {
   user: UserProfile;
@@ -16,6 +17,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
   onNavigate
 }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+
+  // Check current trial state
+  const trialInfo = calculateTrialRemaining(user?.trialStartDate, user?.trialExpiryDate);
+  const isTrialExpired = user?.subscriptionStatus === 'expired' || (user?.trialExpiryDate && trialInfo.isExpired);
+  const isTrialActive = user?.subscriptionStatus === 'trialing' && !trialInfo.isExpired;
 
   const plans = [
     {
@@ -198,13 +204,34 @@ export const PricingView: React.FC<PricingViewProps> = ({
               </div>
 
               {plan.isTrial ? (
-                <button 
-                  onClick={onSelectTrial}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2 active:scale-95"
-                >
-                  <Clock className="w-4 h-4" />
-                  {plan.buttonText}
-                </button>
+                isTrialExpired ? (
+                  <div className="space-y-2">
+                    <button 
+                      disabled
+                      className="w-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 opacity-80 cursor-not-allowed"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      3-Day Trial Expired
+                    </button>
+                    <p className="text-[10px] text-amber-400/80 text-center font-mono">Your 3-day trial has ended. Select Basic, Pro, or Premium to reactivate.</p>
+                  </div>
+                ) : isTrialActive ? (
+                  <button 
+                    onClick={() => onNavigate('dashboard')}
+                    className="w-full bg-blue-600/30 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 font-mono text-xs font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4 text-blue-400 animate-pulse" />
+                    Trial Active ({trialInfo.displayText})
+                  </button>
+                ) : (
+                  <button 
+                    onClick={onSelectTrial}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <Clock className="w-4 h-4" />
+                    {plan.buttonText}
+                  </button>
+                )
               ) : (
                 <button 
                   onClick={() => onSelectPaidPlan(plan.name as any, price, billingCycle)}

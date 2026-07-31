@@ -59,9 +59,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [showRolesModal, setShowRolesModal] = useState<boolean>(false);
   const [customGoalInput, setCustomGoalInput] = useState<string>('');
 
-  // Card view state mode for user state testing & viewing: 'auto' | 'loading' | 'empty' | 'populated'
-  const [cardStateMode, setCardStateMode] = useState<'auto' | 'loading' | 'empty' | 'populated'>('auto');
-
   const hasResume = Boolean(
     (user.resumeVersions && user.resumeVersions.length > 0) ||
     (user.resumeText && user.resumeText.trim().length > 0)
@@ -75,9 +72,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Helper function to resolve state per card
   const getCardState = (hasRealData: boolean): 'loading' | 'empty' | 'populated' => {
-    if (cardStateMode === 'loading') return 'loading';
-    if (cardStateMode === 'empty') return 'empty';
-    if (cardStateMode === 'populated') return 'populated';
     return hasRealData ? 'populated' : 'empty';
   };
 
@@ -200,32 +194,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               : 'Get started by completing your onboarding checklist below to unlock tailored job recommendations.'}
           </p>
         </div>
-
-        {/* State Toggle Toolbar for User Testing & Verification */}
-        <div className="bg-[#191b25] border border-[#434656]/40 p-2 rounded-2xl flex items-center gap-1.5 shrink-0 shadow-lg">
-          <span className="text-[10px] font-mono uppercase text-[#a1a3b8] px-2.5 font-bold hidden sm:inline">
-            Card State:
-          </span>
-          {[
-            { id: 'auto', label: 'Auto (Real Data)' },
-            { id: 'loading', label: 'Loading' },
-            { id: 'empty', label: 'Empty' },
-            { id: 'populated', label: 'Populated' },
-          ].map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => setCardStateMode(mode.id as any)}
-              className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
-                cardStateMode === mode.id
-                  ? 'bg-[#0052ff] text-white shadow-md'
-                  : 'text-[#a1a3b8] hover:text-white hover:bg-[#11131c]'
-              }`}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
       </div>
+
+      {/* IF USER SKIPPED RESUME - SHOW SPECIAL "UPLOAD RESUME TO UNLOCK" CARD */}
+      {!hasResume && (
+        <div className="bg-gradient-to-br from-blue-900/30 via-[#191b25] to-[#12131d] border-2 border-blue-500/50 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden animate-in fade-in duration-300">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+            <div className="space-y-3 max-w-xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold">
+                <Upload className="w-3.5 h-3.5 text-blue-400 animate-pulse" /> Resume Upload Pending
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-bold font-geist text-white tracking-tight">
+                Upload Resume to Unlock AI Features
+              </h3>
+              <p className="text-xs sm:text-sm font-mono text-[#a1a3b8]">
+                Unlock your complete AI Career Engine with custom ATS scoring and job matching:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 text-xs font-mono font-semibold text-white">
+                <div className="flex items-center gap-2 bg-[#11131c]/80 p-2.5 rounded-xl border border-blue-500/20">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>AI Resume Analysis</span>
+                </div>
+                <div className="flex items-center gap-2 bg-[#11131c]/80 p-2.5 rounded-xl border border-blue-500/20">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Job Matches</span>
+                </div>
+                <div className="flex items-center gap-2 bg-[#11131c]/80 p-2.5 rounded-xl border border-blue-500/20">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>ATS Score</span>
+                </div>
+                <div className="flex items-center gap-2 bg-[#11131c]/80 p-2.5 rounded-xl border border-blue-500/20">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Cover Letter Generator</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 text-center w-full md:w-auto">
+              <button
+                onClick={onAnalyzeResumeClick}
+                className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-mono text-sm font-bold px-8 py-4 rounded-xl transition-all shadow-xl shadow-blue-500/30 cursor-pointer flex items-center justify-center gap-3 active:scale-95"
+              >
+                <Upload className="w-5 h-5" />
+                Upload Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CARD 1: ONBOARDING CHECKLIST SECTION */}
       <div className="bg-[#191b25] border border-[#434656]/40 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">

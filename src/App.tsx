@@ -32,6 +32,7 @@ import { LandingPage } from './components/LandingPage';
 import { AuthView } from './components/AuthView';
 import { PricingView } from './components/PricingView';
 import { CheckoutView } from './components/CheckoutView';
+import { OnboardingWizardView } from './components/OnboardingWizardView';
 import { TrialBanner } from './components/TrialBanner';
 import { SideNavBar, TopNavBar } from './components/Navigation';
 import { DashboardView } from './components/DashboardView';
@@ -144,14 +145,18 @@ function MainAppContent() {
 
   const handleLoginSuccess = (userProfile?: UserProfile) => {
     setIsAuthenticated(true);
+    const targetProfile = userProfile || profile;
     if (userProfile) {
       login(userProfile);
       updateProfileDetails(userProfile);
     } else {
       login();
     }
-    if (!profile.hasSelectedPlan) {
+    
+    if (!targetProfile || !targetProfile.hasSelectedPlan) {
       handleNavigate('pricing');
+    } else if (!targetProfile.hasCompletedOnboarding) {
+      handleNavigate('onboarding');
     } else {
       handleNavigate('dashboard');
     }
@@ -160,7 +165,7 @@ function MainAppContent() {
   // Subscription Plan Handlers
   const handleSelectTrial = () => {
     const now = new Date();
-    const expiry = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const expiry = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Exactly 3 days (72 hours) from now
 
     updateProfileDetails({
       tier: '3-Day Free Trial',
@@ -172,12 +177,16 @@ function MainAppContent() {
     });
 
     addNotification({
-      title: 'Trial expires tomorrow',
-      message: 'Your 3-Day Free Trial is active and will expire tomorrow. Upgrade to Pro anytime for unlimited access.',
-      type: 'warning'
+      title: '3-Day Free Trial Activated',
+      message: 'Your 3-Day Free Trial is active and will expire after 3 days. Enjoy full access to ATS scoring & AI matchers.',
+      type: 'success'
     });
 
-    handleNavigate('dashboard');
+    if (!profile.hasCompletedOnboarding) {
+      handleNavigate('onboarding');
+    } else {
+      handleNavigate('dashboard');
+    }
   };
 
   const handleSelectPaidPlan = (planName: 'Basic' | 'Pro' | 'Premium', price: number, billingCycle: 'monthly' | 'yearly') => {
@@ -201,7 +210,11 @@ function MainAppContent() {
       type: 'success'
     });
 
-    handleNavigate('dashboard');
+    if (!profile.hasCompletedOnboarding) {
+      handleNavigate('onboarding');
+    } else {
+      handleNavigate('dashboard');
+    }
   };
 
   // Render Unauthenticated Views (Landing, Login, Signup)
@@ -253,6 +266,19 @@ function MainAppContent() {
         selectedPlan={selectedCheckoutPlan}
         onPaymentSuccess={handlePaymentSuccess}
         onNavigate={handleNavigate}
+      />
+    );
+  }
+
+  if (currentTab === 'onboarding') {
+    return (
+      <OnboardingWizardView
+        user={profile}
+        onUpdateUser={updateProfileDetails}
+        onNavigate={handleNavigate}
+        onUploadResumeFile={async (file: File) => {
+          await uploadResume(file);
+        }}
       />
     );
   }

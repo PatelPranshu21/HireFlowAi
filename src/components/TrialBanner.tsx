@@ -9,7 +9,7 @@ interface TrialBannerProps {
 }
 
 export const TrialBanner: React.FC<TrialBannerProps> = ({ onNavigate }) => {
-  const { state: authState, startFreeTrial } = useAuth();
+  const { state: authState, startFreeTrial, updateProfile } = useAuth();
   const user = authState.profile;
 
   if (!user || (user.subscriptionStatus !== 'trialing' && user.subscriptionStatus !== 'expired' && user.subscriptionStatus !== 'none')) {
@@ -18,6 +18,15 @@ export const TrialBanner: React.FC<TrialBannerProps> = ({ onNavigate }) => {
 
   const trialInfo = calculateTrialRemaining(user.trialStartDate, user.trialExpiryDate);
   const isExpired = user.subscriptionStatus === 'expired' || trialInfo.isExpired;
+
+  const handleSimulateExpiry = () => {
+    const pastDate = new Date(Date.now() - 1000).toISOString();
+    updateProfile({
+      subscriptionStatus: 'expired',
+      tier: 'Trial Expired',
+      trialExpiryDate: pastDate
+    });
+  };
 
   if (isExpired) {
     return (
@@ -69,8 +78,14 @@ export const TrialBanner: React.FC<TrialBannerProps> = ({ onNavigate }) => {
           <strong>3-Day Free Trial Active:</strong> {trialInfo.displayText}.
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="hidden sm:inline text-white/50 text-[11px]">Enjoy full access to ATS scoring & AI matchers</span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSimulateExpiry}
+          className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+          title="Simulate 3 days elapsed"
+        >
+          Fast-Forward 3 Days (End Trial)
+        </button>
         <button
           onClick={() => onNavigate('pricing')}
           className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-md font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 shadow-md shadow-blue-500/20"

@@ -80,12 +80,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
           experienceLevel: 'Mid Level',
           education: [],
           experience: [],
-          tier: '3-Day Free Trial',
-          subscriptionPlan: '3-Day Free Trial',
-          subscriptionStatus: 'trialing',
-          trialStartDate: new Date().toISOString(),
-          trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-          hasSelectedPlan: true,
+          tier: 'Free',
+          subscriptionPlan: 'None',
+          subscriptionStatus: 'none',
+          trialStartDate: undefined,
+          trialExpiryDate: undefined,
+          hasSelectedPlan: false,
           skills: [],
           technologies: [],
           projects: [],
@@ -143,7 +143,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
         };
 
         onLoginSuccess(constructedProfile);
-        onNavigate('dashboard');
       }
     } catch (err: any) {
       setOauthStatus('Google OAuth login failed');
@@ -168,12 +167,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
           experienceLevel: 'Senior Level',
           education: [],
           experience: [],
-          tier: '3-Day Free Trial',
-          subscriptionPlan: '3-Day Free Trial',
-          subscriptionStatus: 'trialing',
-          trialStartDate: new Date().toISOString(),
-          trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-          hasSelectedPlan: true,
+          tier: 'Free',
+          subscriptionPlan: 'None',
+          subscriptionStatus: 'none',
+          trialStartDate: undefined,
+          trialExpiryDate: undefined,
+          hasSelectedPlan: false,
           skills: [],
           technologies: [],
           projects: [],
@@ -231,7 +230,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
         };
 
         onLoginSuccess(constructedProfile);
-        onNavigate('dashboard');
       }
     } catch (err: any) {
       setOauthStatus('LinkedIn OAuth login failed');
@@ -270,12 +268,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
         experienceLevel: 'Mid Level',
         education: [],
         experience: [],
-        tier: '3-Day Free Trial',
-        subscriptionPlan: '3-Day Free Trial',
-        subscriptionStatus: 'trialing',
-        trialStartDate: new Date().toISOString(),
-        trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        hasSelectedPlan: true,
+        tier: 'Free',
+        subscriptionPlan: 'None',
+        subscriptionStatus: 'none',
+        trialStartDate: undefined,
+        trialExpiryDate: undefined,
+        hasSelectedPlan: false,
         skills: [],
         technologies: [],
         projects: [],
@@ -333,7 +331,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
       };
 
       onLoginSuccess(userProfile);
-      onNavigate('dashboard');
     }, 800);
   };
 
@@ -375,12 +372,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
         experienceLevel: 'Mid Level',
         education: [],
         experience: [],
-        tier: '3-Day Free Trial',
-        subscriptionPlan: '3-Day Free Trial',
-        subscriptionStatus: 'trialing',
-        trialStartDate: new Date().toISOString(),
-        trialExpiryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        hasSelectedPlan: true,
+        tier: 'Free',
+        subscriptionPlan: 'None',
+        subscriptionStatus: 'none',
+        trialStartDate: undefined,
+        trialExpiryDate: undefined,
+        hasSelectedPlan: false,
         skills: [],
         technologies: [],
         projects: [],

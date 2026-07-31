@@ -23,6 +23,7 @@ import { initialUserProfile, initialTasks, initialJobRecommendations, initialAct
 import { WorkflowEngine } from '../services/workflowEngine';
 import { CalendarService } from '../services/calendarService';
 import { AiMemoryService } from '../services/aiMemoryService';
+import { calculateTrialRemaining } from '../utils/trialUtils';
 import { EmployabilityScoreService } from '../services/employabilityScoreService';
 import { ProductivityService } from '../services/productivityService';
 
@@ -568,6 +569,19 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const recordUsage = (type: 'resumeScans' | 'atsAnalyses' | 'aiInterviews' | 'coverLetterGenerations' | 'jobMatchAnalyses', amount: number = 1): boolean => {
     let isAllowed = true;
     setProfile(prev => {
+      // Check trial expiration
+      const trialInfo = calculateTrialRemaining(prev.trialStartDate, prev.trialExpiryDate);
+      if (prev.subscriptionStatus === 'expired' || (prev.trialExpiryDate && trialInfo.isExpired)) {
+        isAllowed = false;
+        pushCoachMessage({
+          type: 'alert',
+          message: 'Your 3-Day Free Trial has ended. Please choose a subscription plan (Basic, Pro, or Premium) to continue using AI tools.',
+          actionText: 'Select Plan',
+          actionTab: 'pricing'
+        });
+        return { ...prev, subscriptionStatus: 'expired' };
+      }
+
       const currentLimits = prev.usageLimits || {
         resumeScans: { used: 0, max: 3 },
         atsAnalyses: { used: 0, max: 3 },

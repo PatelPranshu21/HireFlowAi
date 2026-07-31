@@ -144,6 +144,22 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
           </div>
 
           <div className="flex gap-2">
+            {user.subscriptionStatus === 'trialing' && (
+              <button 
+                onClick={() => {
+                  const pastDate = new Date(Date.now() - 1000).toISOString();
+                  onUpdateUser({ 
+                    subscriptionStatus: 'expired',
+                    tier: 'Trial Expired',
+                    trialExpiryDate: pastDate
+                  });
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                Fast-Forward 3 Days (End Trial)
+              </button>
+            )}
             {user.subscriptionStatus === 'active' && (
               <button 
                 onClick={() => setCancelModal(true)}

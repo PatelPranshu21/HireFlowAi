@@ -4,6 +4,7 @@ export type NavigationTab =
   | 'signup'
   | 'pricing'
   | 'checkout'
+  | 'onboarding'
   | 'dashboard'
   | 'resume-suite'
   | 'job-suite'
@@ -141,6 +142,8 @@ export interface CentralCareerProfile {
   trialExpiryDate?: string;
   nextBillingDate?: string;
   hasSelectedPlan?: boolean;
+  hasCompletedOnboarding?: boolean;
+  hasUploadedResume?: boolean;
   transactionHistory?: TransactionItem[];
   usageLimits?: UsageLimits;
 
