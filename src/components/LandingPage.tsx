@@ -49,7 +49,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
             Sign In
           </button>
           <button 
-            onClick={() => onNavigate('signup')}
+            onClick={() => onNavigate('login')}
             className="px-5 py-2 text-sm font-semibold bg-white text-black rounded-full hover:bg-white/90 transition-all shadow-lg shadow-white/5 cursor-pointer active:scale-95"
           >
             Get Started
@@ -83,7 +83,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
 
           <div className="flex flex-wrap items-center gap-4">
             <button 
-              onClick={() => onNavigate('signup')}
+              onClick={() => onNavigate('login')}
               className="px-8 py-4 bg-blue-600 rounded-xl font-semibold text-white shadow-xl shadow-blue-500/20 hover:bg-blue-500 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               Upload Resume — Free
@@ -270,10 +270,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('signup')}
+                onClick={() => onNavigate('login')}
                 className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
               >
-                Sign Up Free
+                Log In Free
               </button>
             </div>
 
@@ -291,7 +291,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('signup')}
+                onClick={() => onNavigate('login')}
                 className="w-full mt-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold cursor-pointer shadow-lg shadow-blue-500/20"
               >
                 Get Gold Access
@@ -311,7 +311,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('signup')}
+                onClick={() => onNavigate('login')}
                 className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
               >
                 Start Premium
@@ -366,7 +366,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
           <p className="text-white/40 text-xs">Simulated technical prep with Gemini.</p>
         </div>
         <div 
-          onClick={() => onNavigate('signup')}
+          onClick={() => onNavigate('login')}
           className="p-8 bg-blue-600 hover:bg-blue-500 transition-colors flex flex-col justify-center cursor-pointer"
         >
           <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest">Available Today</p>

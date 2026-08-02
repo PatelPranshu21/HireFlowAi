@@ -1,51 +1,41 @@
 import { CalendarEvent } from '../types';
+import { UserService } from './userService';
 
 export class CalendarService {
-  private static STORAGE_KEY = 'hireflow_calendar_events_v1';
-
-  public static getEvents(): CalendarEvent[] {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      // Fallback
-    }
-
-    const defaultEvents: CalendarEvent[] = [];
-
-    return defaultEvents;
+  private static getActiveUserId(): string {
+    return UserService.getActiveUserId() || 'guest';
   }
 
-  public static addEvent(event: Omit<CalendarEvent, 'id'>): CalendarEvent {
-    const events = this.getEvents();
+  public static getEvents(userId?: string): CalendarEvent[] {
+    const targetUserId = userId || this.getActiveUserId();
+    return UserService.getUserScopedData<CalendarEvent[]>(targetUserId, 'calendar_events', []);
+  }
+
+  public static addEvent(event: Omit<CalendarEvent, 'id'>, userId?: string): CalendarEvent {
+    const targetUserId = userId || this.getActiveUserId();
+    const events = this.getEvents(targetUserId);
     const newEvent: CalendarEvent = {
       ...event,
       id: `evt_${Date.now()}`
     };
     const updated = [newEvent, ...events];
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Error saving calendar event:', e);
-    }
+    UserService.setUserScopedData(targetUserId, 'calendar_events', updated);
     return newEvent;
   }
 
-  public static toggleEvent(id: string): CalendarEvent[] {
-    const events = this.getEvents();
+  public static toggleEvent(id: string, userId?: string): CalendarEvent[] {
+    const targetUserId = userId || this.getActiveUserId();
+    const events = this.getEvents(targetUserId);
     const updated = events.map(e => e.id === id ? { ...e, completed: !e.completed } : e);
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      console.error('Error updating calendar event:', err);
-    }
+    UserService.setUserScopedData(targetUserId, 'calendar_events', updated);
     return updated;
   }
 
   /**
    * Automatically schedule interview & prep study sessions when user applies for a job
    */
-  public static scheduleJobApplicationWorkflow(jobTitle: string, company: string, jobId?: string): CalendarEvent[] {
+  public static scheduleJobApplicationWorkflow(jobTitle: string, company: string, jobId?: string, userId?: string): CalendarEvent[] {
+    const targetUserId = userId || this.getActiveUserId();
     const newEvents: CalendarEvent[] = [
       {
         id: `evt_prep_${Date.now()}_1`,
@@ -82,13 +72,10 @@ export class CalendarService {
       }
     ];
 
-    const current = this.getEvents();
+    const current = this.getEvents(targetUserId);
     const updated = [...newEvents, ...current];
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Error saving automated calendar events:', e);
-    }
+    UserService.setUserScopedData(targetUserId, 'calendar_events', updated);
     return updated;
   }
 }
+

@@ -63,7 +63,8 @@ export class WorkflowEngine {
       resumeText: resumeFileText || profile.resumeText || '',
       atsScore: newAtsScore,
       skills: newSkills,
-      resumeVersions: updatedVersions
+      resumeVersions: updatedVersions,
+      hasUploadedResume: true
     };
 
     // 4. Recalculate Employability & Readiness Scores

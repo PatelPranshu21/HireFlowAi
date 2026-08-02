@@ -157,6 +157,7 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
       targetRole,
       skills: selectedSkills,
       hasUploadedResume: resumeUploaded,
+      hasCompletedOnboarding: true,
       preferences: {
         ...user.preferences,
         preferredRoles: [targetRole],

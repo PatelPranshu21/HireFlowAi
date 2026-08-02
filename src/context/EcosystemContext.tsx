@@ -26,6 +26,7 @@ import { AiMemoryService } from '../services/aiMemoryService';
 import { calculateTrialRemaining } from '../utils/trialUtils';
 import { EmployabilityScoreService } from '../services/employabilityScoreService';
 import { ProductivityService } from '../services/productivityService';
+import { UserService } from '../services/userService';
 
 interface EcosystemContextType {
   profile: CentralCareerProfile;
@@ -118,6 +119,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const { state: authState, updateProfile: authUpdateProfile } = useAuth();
 
   const profile = authState.profile || initialUserProfile;
+  const currentUserId = authState.profile?.id || '';
 
   const setProfile = (action: React.SetStateAction<CentralCareerProfile>) => {
     if (typeof action === 'function') {
@@ -128,24 +130,119 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     }
   };
 
-  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
-  const [recommendations, setRecommendations] = useState<JobRecommendation[]>(initialJobRecommendations);
-  const [activities, setActivities] = useState<ActivityLog[]>(initialActivityLogs);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [recommendations, setRecommendations] = useState<JobRecommendation[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [applications, setApplications] = useState<ApplicationCard[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('hireflow_notifications_v1');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return [];
-  });
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => CalendarService.getEvents());
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+
+  // Productivity & Collaboration State
+  const [prodTasks, setProdTasks] = useState<ProductivityTask[]>([]);
+  const [prodNotes, setProdNotes] = useState<ProductivityNote[]>([]);
+  const [prodGoals, setProdGoals] = useState<ProductivityGoal[]>([]);
+  const [focusSessions, setFocusSessions] = useState<FocusSessionLog[]>([]);
+  const [streaks, setStreaks] = useState<ProductivityStreaks>(ProductivityService.getStreaks('guest'));
+  const [prodSettings, setProdSettings] = useState<ProductivitySettings>(ProductivityService.getSettings('guest'));
+  const [integrations, setIntegrations] = useState<ThirdPartyIntegrationState>(ProductivityService.getIntegrations('guest'));
+
+  // Modals & Coach
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [isDailyBriefingOpen, setIsDailyBriefingOpen] = useState(false);
+  const [coachMessages, setCoachMessages] = useState<ProactiveCoachMessage[]>([]);
+
+  // Reload all user-scoped data whenever currentUserId changes
+  useEffect(() => {
+    if (!currentUserId) {
+      setTasks([]);
+      setRecommendations([]);
+      setActivities([]);
+      setApplications([]);
+      setNotifications([]);
+      setCalendarEvents([]);
+      setProdTasks([]);
+      setProdNotes([]);
+      setProdGoals([]);
+      setFocusSessions([]);
+      setCoachMessages([]);
+      return;
+    }
+
+    setTasks(UserService.getUserScopedData(currentUserId, 'tasks', initialTasks));
+    setRecommendations(UserService.getUserScopedData(currentUserId, 'recommendations', initialJobRecommendations));
+    setActivities(UserService.getUserScopedData(currentUserId, 'activities', initialActivityLogs));
+    setApplications(UserService.getUserScopedData(currentUserId, 'applications', []));
+    setNotifications(UserService.getUserScopedData(currentUserId, 'notifications', sampleNotifications));
+    setCalendarEvents(CalendarService.getEvents(currentUserId));
+
+    setProdTasks(ProductivityService.getTasks(currentUserId));
+    setProdNotes(ProductivityService.getNotes(currentUserId));
+    setProdGoals(ProductivityService.getGoals(currentUserId));
+    setFocusSessions(ProductivityService.getFocusSessions(currentUserId));
+    setStreaks(ProductivityService.getStreaks(currentUserId));
+    setProdSettings(ProductivityService.getSettings(currentUserId));
+    setIntegrations(ProductivityService.getIntegrations(currentUserId));
+
+    setCoachMessages([
+      {
+        id: `coach_init_${currentUserId}`,
+        type: 'recommendation',
+        message: `Welcome back ${profile.name || 'User'}! Your ATS Score is ${profile.atsScore || 0}%. Upload your latest resume to boost your job match score.`,
+        actionText: 'View Resume Suite',
+        actionTab: 'resume-suite',
+        timestamp: 'Just now'
+      }
+    ]);
+  }, [currentUserId]);
+
+  // Persist User-Scoped Data
+  useEffect(() => {
+    if (currentUserId) UserService.setUserScopedData(currentUserId, 'tasks', tasks);
+  }, [tasks, currentUserId]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('hireflow_notifications_v1', JSON.stringify(notifications));
-    } catch (e) {}
-  }, [notifications]);
+    if (currentUserId) UserService.setUserScopedData(currentUserId, 'recommendations', recommendations);
+  }, [recommendations, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) UserService.setUserScopedData(currentUserId, 'activities', activities);
+  }, [activities, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) UserService.setUserScopedData(currentUserId, 'applications', applications);
+  }, [applications, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) UserService.setUserScopedData(currentUserId, 'notifications', notifications);
+  }, [notifications, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveTasks(prodTasks, currentUserId);
+  }, [prodTasks, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveNotes(prodNotes, currentUserId);
+  }, [prodNotes, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveGoals(prodGoals, currentUserId);
+  }, [prodGoals, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveFocusSessions(focusSessions, currentUserId);
+  }, [focusSessions, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveStreaks(streaks, currentUserId);
+  }, [streaks, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveSettings(prodSettings, currentUserId);
+  }, [prodSettings, currentUserId]);
+
+  useEffect(() => {
+    if (currentUserId) ProductivityService.saveIntegrations(integrations, currentUserId);
+  }, [integrations, currentUserId]);
 
   const addNotification = (notif: { title: string; message: string; type?: 'info' | 'success' | 'warning' | 'alert' }) => {
     const newNotif: NotificationItem = {
@@ -158,50 +255,6 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     };
     setNotifications(prev => [newNotif, ...prev]);
   };
-
-  // Productivity & Collaboration State
-  const [prodTasks, setProdTasks] = useState<ProductivityTask[]>(() => ProductivityService.getTasks());
-  const [prodNotes, setProdNotes] = useState<ProductivityNote[]>(() => ProductivityService.getNotes());
-  const [prodGoals, setProdGoals] = useState<ProductivityGoal[]>(() => ProductivityService.getGoals());
-  const [focusSessions, setFocusSessions] = useState<FocusSessionLog[]>(() => ProductivityService.getFocusSessions());
-  const [streaks, setStreaks] = useState<ProductivityStreaks>(() => ProductivityService.getStreaks());
-  const [prodSettings, setProdSettings] = useState<ProductivitySettings>(() => ProductivityService.getSettings());
-  const [integrations, setIntegrations] = useState<ThirdPartyIntegrationState>(() => ProductivityService.getIntegrations());
-
-  // Modals & Coach
-  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
-  const [isDailyBriefingOpen, setIsDailyBriefingOpen] = useState(false);
-  const [coachMessages, setCoachMessages] = useState<ProactiveCoachMessage[]>(() => [
-    {
-      id: 'coach_init_1',
-      type: 'recommendation',
-      message: `Welcome back ${profile.name || 'User'}! Your ATS Score is ${profile.atsScore || 0}%. Upload your latest resume to boost your job match score.`,
-      actionText: 'View Resume Suite',
-      actionTab: 'resume-suite',
-      timestamp: 'Just now'
-    }
-  ]);
-
-  // Persist Central Career Profile
-  useEffect(() => {
-    try {
-      localStorage.setItem('hireflow_central_profile_v1', JSON.stringify(profile));
-    } catch (e) {}
-  }, [profile]);
-
-  // Sync Calendar Events state
-  useEffect(() => {
-    setCalendarEvents(CalendarService.getEvents());
-  }, []);
-
-  // Persist Productivity Data
-  useEffect(() => { ProductivityService.saveTasks(prodTasks); }, [prodTasks]);
-  useEffect(() => { ProductivityService.saveNotes(prodNotes); }, [prodNotes]);
-  useEffect(() => { ProductivityService.saveGoals(prodGoals); }, [prodGoals]);
-  useEffect(() => { ProductivityService.saveFocusSessions(focusSessions); }, [focusSessions]);
-  useEffect(() => { ProductivityService.saveStreaks(streaks); }, [streaks]);
-  useEffect(() => { ProductivityService.saveSettings(prodSettings); }, [prodSettings]);
-  useEffect(() => { ProductivityService.saveIntegrations(integrations); }, [integrations]);
 
   const pushCoachMessage = (msg: Omit<ProactiveCoachMessage, 'id' | 'timestamp'>) => {
     const newMsg: ProactiveCoachMessage = {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, ParsedResumeData } from '../types';
 import { initialUserProfile } from '../data/mockData';
+import { UserService } from '../services/userService';
 
 export interface ResumeData {
   fileName?: string;
@@ -35,7 +36,7 @@ export interface UserState {
 
 export interface AuthContextType {
   state: UserState;
-  login: (email?: string, name?: string) => void;
+  login: (userProfileOrEmail?: UserProfile | string, name?: string) => void;
   logout: () => void;
   updateProfile: (updates: Partial<UserProfile>) => void;
   setResume: (resume: ResumeData | null) => void;
@@ -48,47 +49,36 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const AUTH_STORAGE_KEY = 'hireflow_auth_state_v1';
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<UserState>(() => {
-    try {
-      const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return parsed;
-        }
+    const activeUserId = UserService.getActiveUserId();
+    if (activeUserId) {
+      const userAccount = UserService.getUserById(activeUserId);
+      if (userAccount && userAccount.profile) {
+        return {
+          profile: userAccount.profile,
+          resume: null,
+          stats: {
+            applicationsCount: userAccount.profile.appliedJobIds?.length || 0,
+            interviewsCount: userAccount.profile.interviewMetrics?.completedSessionsCount || 0,
+            codingSolvedCount: userAccount.profile.interviewMetrics?.solvedCodingCount || 0,
+            resumeScansCount: userAccount.profile.usageLimits?.atsAnalyses?.used || 0
+          },
+          freeTrial: {
+            isTrialActive: userAccount.profile.subscriptionStatus === 'trialing',
+            trialStartedAt: userAccount.profile.trialStartDate || null,
+            trialExpiryAt: userAccount.profile.trialExpiryDate || null,
+            daysRemaining: 3,
+            isExpired: false
+          },
+          isAuthenticated: true
+        };
       }
-    } catch (e) {
-      console.error('Failed to load auth state from storage', e);
     }
 
-    const defaultProfile: UserProfile = {
-      ...initialUserProfile,
-      id: 'usr_auth_1',
-      name: 'Parnshu Patel',
-      email: 'pranshupatel3222@gmail.com',
-      avatar: '',
-      trialStartDate: undefined,
-      trialExpiryDate: undefined,
-      interviewMetrics: {
-        mockScoreOverall: 0,
-        technicalScore: 0,
-        behavioralScore: 0,
-        systemDesignScore: 0,
-        strongTopics: [],
-        weakTopics: [],
-        completedSessionsCount: 0,
-        solvedCodingCount: 0
-      },
-      appliedJobIds: [],
-      savedJobIds: [],
-      atsScore: 0
-    };
-
+    // Default unauthenticated state
     return {
-      profile: defaultProfile,
+      profile: null,
       resume: null,
       stats: {
         applicationsCount: 0,
@@ -103,22 +93,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         daysRemaining: 3,
         isExpired: false
       },
-      isAuthenticated: true
+      isAuthenticated: false
     };
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('Failed to persist auth state', e);
-    }
-  }, [state]);
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setState(prev => {
       if (!prev.profile) return prev;
-      const updatedProfile = { ...prev.profile, ...updates };
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, updates) || {
+        ...prev.profile,
+        ...updates
+      };
       return {
         ...prev,
         profile: updatedProfile
@@ -128,11 +113,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setResume = (resume: ResumeData | null) => {
     setState(prev => {
-      const updatedProfile = prev.profile ? {
-        ...prev.profile,
+      if (!prev.profile) return prev;
+      const updates = {
         resumeText: resume?.fileText || prev.profile.resumeText,
         atsScore: resume?.atsScore !== undefined ? resume.atsScore : prev.profile.atsScore
-      } : null;
+      };
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, updates) || {
+        ...prev.profile,
+        ...updates
+      };
 
       return {
         ...prev,
@@ -149,12 +138,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const expiryDateStr = expiry.toISOString();
 
     setState(prev => {
-      const updatedProfile = prev.profile ? {
-        ...prev.profile,
+      if (!prev.profile) return prev;
+      const updates = {
         subscriptionStatus: 'trialing' as const,
+        subscriptionPlan: '3-Day Free Trial' as const,
+        tier: '3-Day Free Trial' as const,
+        hasSelectedPlan: true,
         trialStartDate: startDateStr,
         trialExpiryDate: expiryDateStr
-      } : null;
+      };
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, updates) || {
+        ...prev.profile,
+        ...updates
+      };
 
       return {
         ...prev,
@@ -171,55 +167,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const incrementApplications = () => {
-    setState(prev => ({
-      ...prev,
-      stats: {
-        ...prev.stats,
-        applicationsCount: prev.stats.applicationsCount + 1
-      },
-      profile: prev.profile ? {
+    setState(prev => {
+      if (!prev.profile) return prev;
+      const newApplied = [...(prev.profile.appliedJobIds || []), `app_${Date.now()}`];
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, {
+        appliedJobIds: newApplied
+      }) || {
         ...prev.profile,
-        appliedJobIds: [...(prev.profile.appliedJobIds || []), `app_${Date.now()}`]
-      } : null
-    }));
+        appliedJobIds: newApplied
+      };
+
+      return {
+        ...prev,
+        stats: {
+          ...prev.stats,
+          applicationsCount: prev.stats.applicationsCount + 1
+        },
+        profile: updatedProfile
+      };
+    });
   };
 
   const incrementInterviews = () => {
     setState(prev => {
+      if (!prev.profile) return prev;
       const newCount = prev.stats.interviewsCount + 1;
+      const newMetrics = {
+        ...(prev.profile.interviewMetrics || {}),
+        completedSessionsCount: newCount
+      };
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, {
+        interviewMetrics: newMetrics
+      }) || {
+        ...prev.profile,
+        interviewMetrics: newMetrics
+      };
+
       return {
         ...prev,
         stats: {
           ...prev.stats,
           interviewsCount: newCount
         },
-        profile: prev.profile ? {
-          ...prev.profile,
-          interviewMetrics: {
-            ...prev.profile.interviewMetrics,
-            completedSessionsCount: newCount
-          }
-        } : null
+        profile: updatedProfile
       };
     });
   };
 
   const incrementCodingSolved = () => {
     setState(prev => {
+      if (!prev.profile) return prev;
       const newCount = prev.stats.codingSolvedCount + 1;
+      const newMetrics = {
+        ...(prev.profile.interviewMetrics || {}),
+        solvedCodingCount: newCount
+      };
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, {
+        interviewMetrics: newMetrics
+      }) || {
+        ...prev.profile,
+        interviewMetrics: newMetrics
+      };
+
       return {
         ...prev,
         stats: {
           ...prev.stats,
           codingSolvedCount: newCount
         },
-        profile: prev.profile ? {
-          ...prev.profile,
-          interviewMetrics: {
-            ...prev.profile.interviewMetrics,
-            solvedCodingCount: newCount
-          }
-        } : null
+        profile: updatedProfile
       };
     });
   };
@@ -234,32 +250,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  const login = (email?: string, name?: string) => {
-    const userEmail = email || 'pranshupatel3222@gmail.com';
-    const userName = name || 'Parnshu Patel';
-    const newProfile: UserProfile = {
-      ...initialUserProfile,
-      id: `usr_${Date.now()}`,
-      name: userName,
-      email: userEmail,
-      avatar: '',
-      atsScore: 0,
-      appliedJobIds: [],
-      savedJobIds: [],
-      interviewMetrics: {
-        mockScoreOverall: 0,
-        technicalScore: 0,
-        behavioralScore: 0,
-        systemDesignScore: 0,
-        strongTopics: [],
-        weakTopics: [],
-        completedSessionsCount: 0,
-        solvedCodingCount: 0
-      }
-    };
+  const login = (userProfileOrEmail?: UserProfile | string, name?: string) => {
+    let targetProfile: UserProfile | null = null;
 
+    if (userProfileOrEmail && typeof userProfileOrEmail === 'object') {
+      targetProfile = userProfileOrEmail;
+      UserService.setActiveUserId(targetProfile.id);
+    } else if (typeof userProfileOrEmail === 'string') {
+      const authRes = UserService.authenticateUser({ email: userProfileOrEmail });
+      if (authRes.user) {
+        targetProfile = authRes.user.profile;
+      }
+    }
+
+    if (!targetProfile) {
+      const activeId = UserService.getActiveUserId();
+      if (activeId) {
+        const acc = UserService.getUserById(activeId);
+        if (acc) targetProfile = acc.profile;
+      }
+    }
+
+    if (!targetProfile) {
+      // Fallback fallback
+      const authRes = UserService.authenticateUser({ email: 'pranshupatel3222@gmail.com' });
+      targetProfile = authRes.user?.profile || null;
+    }
+
+    if (targetProfile) {
+      UserService.setActiveUserId(targetProfile.id);
+      setState({
+        profile: targetProfile,
+        resume: null,
+        stats: {
+          applicationsCount: targetProfile.appliedJobIds?.length || 0,
+          interviewsCount: targetProfile.interviewMetrics?.completedSessionsCount || 0,
+          codingSolvedCount: targetProfile.interviewMetrics?.solvedCodingCount || 0,
+          resumeScansCount: targetProfile.usageLimits?.atsAnalyses?.used || 0
+        },
+        freeTrial: {
+          isTrialActive: targetProfile.subscriptionStatus === 'trialing',
+          trialStartedAt: targetProfile.trialStartDate || null,
+          trialExpiryAt: targetProfile.trialExpiryDate || null,
+          daysRemaining: 3,
+          isExpired: false
+        },
+        isAuthenticated: true
+      });
+    }
+  };
+
+  const logout = () => {
+    UserService.clearActiveSession();
     setState({
-      profile: newProfile,
+      profile: null,
       resume: null,
       stats: {
         applicationsCount: 0,
@@ -274,17 +318,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         daysRemaining: 3,
         isExpired: false
       },
-      isAuthenticated: true
-    });
-  };
-
-  const logout = () => {
-    setState(prev => ({
-      ...prev,
-      profile: null,
-      resume: null,
       isAuthenticated: false
-    }));
+    });
   };
 
   return (
@@ -314,3 +349,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

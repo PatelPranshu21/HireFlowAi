@@ -61,10 +61,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const hasResume = Boolean(
     (user.resumeVersions && user.resumeVersions.length > 0) ||
-    (user.resumeText && user.resumeText.trim().length > 0)
+    (user.resumeText && user.resumeText.trim().length > 0) ||
+    user.hasUploadedResume
   );
 
-  const hasProfile = Boolean(user.name && user.email && user.title && user.location);
+  const hasProfile = Boolean(
+    user.hasCompletedOnboarding ||
+    (user.name && user.email && (user.title || user.location))
+  );
   const hasApplications = Boolean(user.appliedJobIds && user.appliedJobIds.length > 0);
   const hasInterviews = Boolean(user.interviewMetrics && (user.interviewMetrics.completedSessionsCount || 0) > 0);
 
@@ -78,8 +82,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Evaluate task completion states automatically from user data or manual override
   const step1Done = hasResume || Boolean(manualToggles['resume']);
   const step2Done = hasProfile || Boolean(manualToggles['profile']);
-  const step3Done = Boolean(user.targetRole && user.targetRole.trim().length > 0) || Boolean(manualToggles['goal']);
-  const step4Done = Boolean(user.preferences?.preferredRoles && user.preferences.preferredRoles.length > 0) || Boolean(manualToggles['roles']);
+  const step3Done = Boolean(user.targetRole && user.targetRole.trim().length > 0) || Boolean(manualToggles['goal']) || Boolean(user.hasCompletedOnboarding);
+  const step4Done = Boolean(user.preferences?.preferredRoles && user.preferences.preferredRoles.length > 0) || Boolean(manualToggles['roles']) || Boolean(user.hasCompletedOnboarding);
   const step5Done = jobAlertsEnabled || Boolean(manualToggles['alerts']);
 
   const onboardingSteps = [

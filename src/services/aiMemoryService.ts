@@ -1,16 +1,14 @@
 import { CentralCareerProfile, JobRecommendation } from '../types';
+import { UserService } from './userService';
 
 export class AiMemoryService {
-  private static MEMORY_STORAGE_KEY = 'hireflow_ai_memory_v1';
+  private static getActiveUserId(): string {
+    return UserService.getActiveUserId() || 'guest';
+  }
 
-  public static getMemory() {
-    try {
-      const stored = localStorage.getItem(this.MEMORY_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      // Fallback
-    }
-    return {
+  public static getMemory(userId?: string) {
+    const targetUserId = userId || this.getActiveUserId();
+    const defaults = {
       interactedCompanies: [] as string[],
       likedTechnologies: [] as string[],
       appliedJobTitles: [] as string[],
@@ -18,13 +16,17 @@ export class AiMemoryService {
       interviewScoreTrend: [] as { date: string; score: number }[],
       frequentlySearchedKeywords: [] as string[]
     };
+
+    return UserService.getUserScopedData(targetUserId, 'ai_memory', defaults);
   }
 
   public static recordJobInteraction(
     type: 'save' | 'apply' | 'reject' | 'view',
-    job: { title: string; company: string; tags?: string[] }
+    job: { title: string; company: string; tags?: string[] },
+    userId?: string
   ) {
-    const memory = this.getMemory();
+    const targetUserId = userId || this.getActiveUserId();
+    const memory = this.getMemory(targetUserId);
     if (type === 'apply' || type === 'save') {
       if (!memory.interactedCompanies.includes(job.company)) {
         memory.interactedCompanies.push(job.company);
@@ -45,18 +47,15 @@ export class AiMemoryService {
       }
     }
 
-    try {
-      localStorage.setItem(this.MEMORY_STORAGE_KEY, JSON.stringify(memory));
-    } catch (e) {
-      console.error('Error saving AI Memory:', e);
-    }
+    UserService.setUserScopedData(targetUserId, 'ai_memory', memory);
   }
 
   /**
    * Adjusts job recommendation match scores based on accumulated memory preferences
    */
-  public static refineJobMatches(jobs: JobRecommendation[], profile: CentralCareerProfile): JobRecommendation[] {
-    const memory = this.getMemory();
+  public static refineJobMatches(jobs: JobRecommendation[], profile: CentralCareerProfile, userId?: string): JobRecommendation[] {
+    const targetUserId = userId || this.getActiveUserId();
+    const memory = this.getMemory(targetUserId);
     const userSkills = profile.skills || [];
     const targetRoleLower = (profile.targetRole || '').toLowerCase();
 
@@ -98,3 +97,4 @@ export class AiMemoryService {
     });
   }
 }
+

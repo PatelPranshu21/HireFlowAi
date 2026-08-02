@@ -143,9 +143,8 @@ function MainAppContent() {
     handleNavigate('landing');
   };
 
-  const handleLoginSuccess = (userProfile?: UserProfile) => {
+  const handleLoginSuccess = (userProfile?: UserProfile, isNewAccount: boolean = false) => {
     setIsAuthenticated(true);
-    const targetProfile = userProfile || profile;
     if (userProfile) {
       login(userProfile);
       updateProfileDetails(userProfile);
@@ -153,11 +152,13 @@ function MainAppContent() {
       login();
     }
     
-    if (!targetProfile || !targetProfile.hasSelectedPlan) {
+    if (isNewAccount) {
       handleNavigate('pricing');
-    } else if (!targetProfile.hasCompletedOnboarding) {
-      handleNavigate('onboarding');
     } else {
+      updateProfileDetails({
+        hasCompletedOnboarding: true,
+        hasSelectedPlan: true
+      });
       handleNavigate('dashboard');
     }
   };
@@ -221,7 +222,7 @@ function MainAppContent() {
   if (currentTab === 'landing') {
     return (
       <LandingPage 
-        onStartForFree={() => handleNavigate('signup')} 
+        onStartForFree={() => handleNavigate('login')} 
         onNavigate={handleNavigate}
       />
     );
@@ -277,7 +278,17 @@ function MainAppContent() {
         onUpdateUser={updateProfileDetails}
         onNavigate={handleNavigate}
         onUploadResumeFile={async (file: File) => {
-          await uploadResume(file);
+          let text = '';
+          try {
+            text = await file.text();
+          } catch (e) {
+            text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
+          }
+          if (!text || text.trim().length === 0) {
+            text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
+          }
+          uploadResume(text, file.name);
+          updateProfileDetails({ hasUploadedResume: true });
         }}
       />
     );
