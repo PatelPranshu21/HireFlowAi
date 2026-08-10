@@ -1,8 +1,11 @@
 import express from "express";
 import path from "path";
+import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { initDb } from "./src/db/postgres";
+import authRoutes from "./server/authRoutes";
 
 dotenv.config();
 
@@ -10,6 +13,10 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
+app.use(cookieParser());
+
+// Mount Authentication & OAuth routes
+app.use("/api/auth", authRoutes);
 
 // Lazy initializer for Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -542,6 +549,9 @@ app.post("/api/ai/chat", async (req, res) => {
 // ------------------- VITE MIDDLEWARE SETUP -------------------
 
 async function startServer() {
+  // Initialize PostgreSQL database schema if DATABASE_URL is configured
+  await initDb();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

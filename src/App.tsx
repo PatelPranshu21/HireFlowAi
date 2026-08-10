@@ -24,6 +24,7 @@ import {
 
 import { EcosystemProvider, useEcosystem } from './context/EcosystemContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { UserService } from './services/userService';
 import { AiCareerCoachWidget } from './components/AiCareerCoachWidget';
 import { DailyBriefingModal } from './components/DailyBriefingModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
@@ -71,7 +72,8 @@ function MainAppContent() {
     (window as any).__openDailyBriefing = () => setIsDailyBriefingOpen(true);
   }, [setIsGlobalSearchOpen, setIsDailyBriefingOpen]);
 
-  // Auth state - default to authenticated
+  // Auth state
+  const { state: authState, login, logout } = useAuth();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -92,12 +94,39 @@ function MainAppContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [authRedirectMessage, setAuthRedirectMessage] = useState<string>('');
 
+  // Handle OAuth 2.0 callback redirect parameters (#oauth_callback?token=...&tab=...&onboarding=...)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('oauth_callback')) {
+      const queryString = hash.split('?')[1] || '';
+      const params = new URLSearchParams(queryString);
+      const token = params.get('token');
+      const tabParam = params.get('tab') as NavigationTab;
+      const onboardingParam = params.get('onboarding') === 'true';
+
+      if (token) {
+        UserService.setAuthToken(token);
+        UserService.getCurrentUserApi().then((res) => {
+          if (res.success && res.user) {
+            setIsAuthenticated(true);
+            login(res.user.profile);
+            updateProfileDetails(res.user.profile);
+
+            const targetTab = tabParam || (res.user.onboardingCompleted ? 'dashboard' : 'onboarding');
+            setCurrentTab(targetTab);
+            window.location.hash = targetTab;
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [login, updateProfileDetails]);
+
   // Sync tab with URL hash
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '') as NavigationTab;
-      if (hash && [
-        'landing', 'login', 'signup', 'pricing', 'checkout', 'dashboard', 'resume-suite', 
+      if (hash && !hash.includes('oauth_callback') && [
+        'landing', 'login', 'signup', 'pricing', 'checkout', 'onboarding', 'dashboard', 'resume-suite', 
         'job-suite', 'interviews', 'career-tools', 'calendar', 
         'settings', 'admin', 'support', 'profile', 'billing'
       ].includes(hash)) {
@@ -134,8 +163,6 @@ function MainAppContent() {
     }
     setIsMobileMenuOpen(false);
   };
-
-  const { state: authState, login, logout } = useAuth();
 
   const handleLogout = () => {
     logout();

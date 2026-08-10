@@ -1,20 +1,276 @@
 import { UserProfile } from '../types';
-import { initialUserProfile, initialTasks, initialJobRecommendations, initialActivityLogs } from '../data/mockData';
+import { initialUserProfile } from '../data/mockData';
 
 export interface StoredUserAccount {
   id: string;
   name: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   createdAt: string;
   profile: UserProfile;
+  onboardingCompleted?: boolean;
 }
 
 const USER_DB_KEY = 'hireflow_user_database_v2';
 const ACTIVE_USER_ID_KEY = 'hireflow_active_user_id_v2';
+const AUTH_TOKEN_KEY = 'hireflow_auth_token_v2';
 
 export class UserService {
-  // Initialize user DB with standard demo accounts if empty
+  public static getAuthToken(): string | null {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  public static setAuthToken(token: string): void {
+    try {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } catch (e) {}
+  }
+
+  public static clearAuthToken(): void {
+    try {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch (e) {}
+  }
+
+  // --- ASYNC API INTEGRATION WITH BACKEND (POSTGRESQL / SERVER) ---
+
+  public static async registerUserApi(data: { name: string; email: string; password: string }): Promise<{
+    success: boolean;
+    user?: StoredUserAccount;
+    token?: string;
+    onboardingCompleted?: boolean;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Signup failed' };
+      }
+
+      if (json.token) {
+        this.setAuthToken(json.token);
+      }
+
+      const account: StoredUserAccount = {
+        id: json.user.id,
+        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || data.name,
+        email: json.user.email,
+        createdAt: new Date().toISOString(),
+        profile: json.user.profile,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+
+      this.setActiveUserId(account.id);
+      this.saveLocalAccount(account);
+
+      return {
+        success: true,
+        user: account,
+        token: json.token,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+    } catch (err: any) {
+      // Fallback local registration if server unreachable
+      return this.registerUser(data);
+    }
+  }
+
+  public static async loginUserApi(data: { email: string; password: string }): Promise<{
+    success: boolean;
+    user?: StoredUserAccount;
+    token?: string;
+    onboardingCompleted?: boolean;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Invalid credentials' };
+      }
+
+      if (json.token) {
+        this.setAuthToken(json.token);
+      }
+
+      const account: StoredUserAccount = {
+        id: json.user.id,
+        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.email,
+        email: json.user.email,
+        createdAt: new Date().toISOString(),
+        profile: json.user.profile,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+
+      this.setActiveUserId(account.id);
+      this.saveLocalAccount(account);
+
+      return {
+        success: true,
+        user: account,
+        token: json.token,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+    } catch (err: any) {
+      return this.authenticateUser(data);
+    }
+  }
+
+  public static async getCurrentUserApi(): Promise<{
+    success: boolean;
+    user?: StoredUserAccount;
+    onboardingCompleted?: boolean;
+    error?: string;
+  }> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/auth/me', { headers });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to authenticate user' };
+      }
+
+      const account: StoredUserAccount = {
+        id: json.user.id,
+        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.email,
+        email: json.user.email,
+        createdAt: new Date().toISOString(),
+        profile: json.user.profile,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+
+      this.setActiveUserId(account.id);
+      this.saveLocalAccount(account);
+
+      return {
+        success: true,
+        user: account,
+        onboardingCompleted: json.user.onboardingCompleted
+      };
+    } catch (err: any) {
+      // Fallback to active user in localStorage
+      const activeId = this.getActiveUserId();
+      if (activeId) {
+        const local = this.getUserById(activeId);
+        if (local) {
+          return {
+            success: true,
+            user: local,
+            onboardingCompleted: Boolean(local.profile.hasCompletedOnboarding)
+          };
+        }
+      }
+      return { success: false, error: 'User session not found' };
+    }
+  }
+
+  public static async saveOnboardingApi(onboardingData: Partial<UserProfile>): Promise<{
+    success: boolean;
+    profile?: UserProfile;
+    error?: string;
+  }> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/auth/onboarding', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(onboardingData)
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Failed to save onboarding data' };
+      }
+
+      const activeId = this.getActiveUserId();
+      if (activeId) {
+        this.updateUserProfile(activeId, {
+          ...onboardingData,
+          hasCompletedOnboarding: true
+        });
+      }
+
+      return {
+        success: true,
+        profile: json.user?.profile || onboardingData as UserProfile
+      };
+    } catch (err: any) {
+      const activeId = this.getActiveUserId();
+      if (activeId) {
+        const updated = this.updateUserProfile(activeId, {
+          ...onboardingData,
+          hasCompletedOnboarding: true
+        });
+        return { success: true, profile: updated || undefined };
+      }
+      return { success: false, error: 'Failed to update onboarding locally' };
+    }
+  }
+
+  public static async updateProfileApi(profileUpdates: Partial<UserProfile>): Promise<UserProfile | null> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(profileUpdates)
+      });
+      const json = await res.json();
+
+      const activeId = this.getActiveUserId();
+      if (activeId) {
+        this.updateUserProfile(activeId, profileUpdates);
+      }
+
+      return json.profile || null;
+    } catch (err: any) {
+      const activeId = this.getActiveUserId();
+      if (activeId) {
+        return this.updateUserProfile(activeId, profileUpdates);
+      }
+      return null;
+    }
+  }
+
+  public static async logoutApi(): Promise<void> {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    this.clearAuthToken();
+    this.clearActiveSession();
+  }
+
+  // --- LOCALSTORAGE CACHE / FALLBACK HELPERS ---
+
   private static getUsersMap(): Record<string, StoredUserAccount> {
     try {
       const stored = localStorage.getItem(USER_DB_KEY);
@@ -24,11 +280,8 @@ export class UserService {
           return parsed;
         }
       }
-    } catch (e) {
-      console.error('Failed to load user DB from localStorage', e);
-    }
+    } catch (e) {}
 
-    // Seed default demo accounts
     const now = new Date().toISOString();
     const defaultDemoProfile: UserProfile = {
       ...initialUserProfile,
@@ -51,9 +304,9 @@ export class UserService {
         id: 'usr_demo_1',
         name: 'Parnshu Patel',
         email: 'pranshupatel3222@gmail.com',
-        passwordHash: 'password123',
         createdAt: now,
-        profile: defaultDemoProfile
+        profile: defaultDemoProfile,
+        onboardingCompleted: true
       }
     };
 
@@ -67,9 +320,13 @@ export class UserService {
   private static saveUsersMap(map: Record<string, StoredUserAccount>): void {
     try {
       localStorage.setItem(USER_DB_KEY, JSON.stringify(map));
-    } catch (e) {
-      console.error('Failed to save user DB', e);
-    }
+    } catch (e) {}
+  }
+
+  private static saveLocalAccount(account: StoredUserAccount): void {
+    const map = this.getUsersMap();
+    map[account.id] = account;
+    this.saveUsersMap(map);
   }
 
   public static getUsers(): StoredUserAccount[] {
@@ -102,7 +359,6 @@ export class UserService {
     const cleanEmail = data.email.trim().toLowerCase();
     const cleanName = data.name.trim();
 
-    // Check if account already exists
     const existing = this.findUserByEmail(cleanEmail);
     if (existing) {
       return {
@@ -127,8 +383,6 @@ export class UserService {
       tier: 'Free',
       subscriptionPlan: 'None',
       subscriptionStatus: 'none',
-      trialStartDate: undefined,
-      trialExpiryDate: undefined,
       hasSelectedPlan: false,
       hasCompletedOnboarding: false,
       skills: [],
@@ -191,16 +445,15 @@ export class UserService {
       id: userId,
       name: cleanName,
       email: cleanEmail,
-      passwordHash: data.password,
       createdAt: now,
-      profile: newProfile
+      profile: newProfile,
+      onboardingCompleted: false
     };
 
     const map = this.getUsersMap();
     map[userId] = newUserRecord;
     this.saveUsersMap(map);
 
-    // Set active session
     this.setActiveUserId(userId);
 
     return {
@@ -218,7 +471,6 @@ export class UserService {
     let account = this.findUserByEmail(cleanEmail);
 
     if (!account) {
-      // Create user on demand for first time login if it doesn't exist
       const derivedName = cleanEmail.split('@')[0]
         .split(/[._-]/)
         .map(p => p.charAt(0).toUpperCase() + p.slice(1))
@@ -234,14 +486,6 @@ export class UserService {
         return { success: false, error: reg.error || 'Authentication failed' };
       }
       account = reg.user;
-    } else if (data.password) {
-      // Update password hash for existing account if provided
-      const map = this.getUsersMap();
-      if (map[account.id]) {
-        map[account.id].passwordHash = data.password;
-        this.saveUsersMap(map);
-        account.passwordHash = data.password;
-      }
     }
 
     this.setActiveUserId(account.id);
@@ -265,14 +509,14 @@ export class UserService {
     map[userId] = {
       ...account,
       name: updatedProfile.name || account.name,
-      profile: updatedProfile
+      profile: updatedProfile,
+      onboardingCompleted: updatedProfile.hasCompletedOnboarding
     };
 
     this.saveUsersMap(map);
     return updatedProfile;
   }
 
-  // Active Session Management
   public static getActiveUserId(): string | null {
     try {
       return localStorage.getItem(ACTIVE_USER_ID_KEY);
@@ -290,6 +534,7 @@ export class UserService {
   public static clearActiveSession(): void {
     try {
       localStorage.removeItem(ACTIVE_USER_ID_KEY);
+      localStorage.removeItem(AUTH_TOKEN_KEY);
     } catch (e) {}
   }
 

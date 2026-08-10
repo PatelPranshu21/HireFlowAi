@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, NavigationTab } from '../types';
+import { UserService } from '../services/userService';
 import { 
   Sparkles, 
   User, 
@@ -148,8 +149,7 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
 
   // Trigger AI Workspace Generation
   const handleCompleteSetup = () => {
-    // Save collected profile details
-    onUpdateUser({
+    const onboardingPayload: Partial<UserProfile> = {
       name,
       phone,
       title,
@@ -168,6 +168,12 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
         preferredCities: locations,
         preferredCompanies: targetCompanies
       }
+    };
+
+    // Save collected profile details to backend/PostgreSQL and local store
+    onUpdateUser(onboardingPayload);
+    UserService.saveOnboardingApi(onboardingPayload).catch(err => {
+      console.error('Failed to sync onboarding to server:', err);
     });
 
     setIsGeneratingWorkspace(true);

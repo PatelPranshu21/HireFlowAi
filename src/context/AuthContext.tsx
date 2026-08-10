@@ -97,6 +97,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
 
+  // Verify session with server on initial mount
+  useEffect(() => {
+    UserService.getCurrentUserApi().then((res) => {
+      if (res.success && res.user) {
+        const userProfile = res.user.profile;
+        if (userProfile) {
+          setState(prev => ({
+            ...prev,
+            profile: userProfile,
+            stats: {
+              applicationsCount: userProfile.appliedJobIds?.length || 0,
+              interviewsCount: userProfile.interviewMetrics?.completedSessionsCount || 0,
+              codingSolvedCount: userProfile.interviewMetrics?.solvedCodingCount || 0,
+              resumeScansCount: userProfile.usageLimits?.atsAnalyses?.used || 0
+            },
+            freeTrial: {
+              isTrialActive: userProfile.subscriptionStatus === 'trialing',
+              trialStartedAt: userProfile.trialStartDate || null,
+              trialExpiryAt: userProfile.trialExpiryDate || null,
+              daysRemaining: 3,
+              isExpired: false
+            },
+            isAuthenticated: true
+          }));
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   const updateProfile = (updates: Partial<UserProfile>) => {
     setState(prev => {
       if (!prev.profile) return prev;
@@ -104,6 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...prev.profile,
         ...updates
       };
+      UserService.updateProfileApi(updates).catch(() => {});
       return {
         ...prev,
         profile: updatedProfile

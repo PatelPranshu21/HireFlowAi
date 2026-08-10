@@ -64,180 +64,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
   const passwordStrength = getPasswordStrength(signupPassword);
 
   const handleOAuthGoogle = async () => {
-    setOauthStatus('Connecting to Google...');
-    try {
-      const emailToUse = mode === 'signup' ? signupEmail : loginEmail;
-      const nameToUse = mode === 'signup' ? signupName : '';
-      const res = await loginWithGoogle(emailToUse, nameToUse);
-      if (res.success && res.profile) {
-        const name = res.profile.name || 'Google User';
-        const email = res.profile.email || 'user@gmail.com';
-        const constructedProfile: UserProfile = {
-          id: `usr_${Date.now()}`,
-          name,
-          email,
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
-          title: 'Software Professional',
-          experienceLevel: 'Mid Level',
-          education: [],
-          experience: [],
-          tier: 'Free',
-          subscriptionPlan: 'None',
-          subscriptionStatus: 'none',
-          trialStartDate: undefined,
-          trialExpiryDate: undefined,
-          hasSelectedPlan: false,
-          skills: [],
-          technologies: [],
-          projects: [],
-          certifications: [],
-          languages: ['English'],
-          targetRole: 'Software Engineer',
-          preferences: {
-            preferredRoles: ['Software Engineer'],
-            preferredCompanies: [],
-            preferredCities: ['Remote'],
-            remotePreference: 'Remote',
-            expectedSalaryMin: 120000,
-            expectedSalaryMax: 180000,
-            experienceLevel: 'Mid Level',
-            preferredTechnologies: ['React', 'TypeScript'],
-            preferredIndustries: ['Technology']
-          },
-          learningRoadmap: [],
-          learningProgress: [],
-          skillsLearned: [],
-          coursesCompleted: [],
-          certificationsEarned: [],
-          atsScore: 0,
-          resumeVersions: [],
-          resumeHistory: [],
-          interviewMetrics: {
-            mockScoreOverall: 0,
-            technicalScore: 0,
-            behavioralScore: 0,
-            systemDesignScore: 0,
-            strongTopics: [],
-            weakTopics: [],
-            completedSessionsCount: 0,
-            solvedCodingCount: 0
-          },
-          savedJobIds: [],
-          appliedJobIds: [],
-          hiddenJobIds: [],
-          rejectedJobIds: [],
-          analytics: {
-            employabilityScore: 0,
-            careerReadinessScore: 0,
-            aiMatchScore: 0,
-            strengths: [],
-            weaknesses: [],
-            priorityImprovements: []
-          },
-          usageLimits: {
-            resumeScans: { used: 0, max: 3 },
-            atsAnalyses: { used: 0, max: 3 },
-            aiInterviews: { used: 0, max: 5 },
-            coverLetterGenerations: { used: 0, max: 3 },
-            jobMatchAnalyses: { used: 0, max: 5 }
-          }
-        };
-
-        onLoginSuccess(constructedProfile, mode === 'signup');
-      }
-    } catch (err: any) {
-      setOauthStatus('Google OAuth login failed');
-    }
+    setOauthStatus('Redirecting to Google OAuth 2.0...');
+    await loginWithGoogle(signupEmail || loginEmail, signupName);
   };
 
   const handleOAuthLinkedIn = async () => {
-    setOauthStatus('Connecting to LinkedIn...');
-    try {
-      const emailToUse = mode === 'signup' ? signupEmail : loginEmail;
-      const nameToUse = mode === 'signup' ? signupName : '';
-      const res = await loginWithLinkedIn(emailToUse, nameToUse);
-      if (res.success && res.profile) {
-        const name = res.profile.name || 'LinkedIn Professional';
-        const email = res.profile.email || 'user@hireflow.ai';
-        const constructedProfile: UserProfile = {
-          id: `usr_${Date.now()}`,
-          name,
-          email,
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
-          title: 'Career Professional',
-          experienceLevel: 'Senior Level',
-          education: [],
-          experience: [],
-          tier: 'Free',
-          subscriptionPlan: 'None',
-          subscriptionStatus: 'none',
-          trialStartDate: undefined,
-          trialExpiryDate: undefined,
-          hasSelectedPlan: false,
-          skills: [],
-          technologies: [],
-          projects: [],
-          certifications: [],
-          languages: ['English'],
-          targetRole: 'Software Engineer',
-          preferences: {
-            preferredRoles: ['Software Engineer'],
-            preferredCompanies: [],
-            preferredCities: ['Remote'],
-            remotePreference: 'Remote',
-            expectedSalaryMin: 120000,
-            expectedSalaryMax: 180000,
-            experienceLevel: 'Senior Level',
-            preferredTechnologies: ['React', 'TypeScript'],
-            preferredIndustries: ['Technology']
-          },
-          learningRoadmap: [],
-          learningProgress: [],
-          skillsLearned: [],
-          coursesCompleted: [],
-          certificationsEarned: [],
-          atsScore: 0,
-          resumeVersions: [],
-          resumeHistory: [],
-          interviewMetrics: {
-            mockScoreOverall: 0,
-            technicalScore: 0,
-            behavioralScore: 0,
-            systemDesignScore: 0,
-            strongTopics: [],
-            weakTopics: [],
-            completedSessionsCount: 0,
-            solvedCodingCount: 0
-          },
-          savedJobIds: [],
-          appliedJobIds: [],
-          hiddenJobIds: [],
-          rejectedJobIds: [],
-          analytics: {
-            employabilityScore: 0,
-            careerReadinessScore: 0,
-            aiMatchScore: 0,
-            strengths: [],
-            weaknesses: [],
-            priorityImprovements: []
-          },
-          usageLimits: {
-            resumeScans: { used: 0, max: 3 },
-            atsAnalyses: { used: 0, max: 3 },
-            aiInterviews: { used: 0, max: 5 },
-            coverLetterGenerations: { used: 0, max: 3 },
-            jobMatchAnalyses: { used: 0, max: 5 }
-          }
-        };
-
-        onLoginSuccess(constructedProfile, mode === 'signup');
-      }
-    } catch (err: any) {
-      setOauthStatus('LinkedIn OAuth login failed');
-    }
+    setOauthStatus('Redirecting to LinkedIn OAuth 2.0...');
+    await loginWithLinkedIn(signupEmail || loginEmail, signupName);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -251,23 +87,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
     }
 
     setIsLoginLoading(true);
-    setTimeout(() => {
-      setIsLoginLoading(false);
-
-      const authRes = UserService.authenticateUser({
+    try {
+      const authRes = await UserService.loginUserApi({
         email: loginEmail,
         password: loginPassword
       });
 
-      if (authRes.user) {
+      setIsLoginLoading(false);
+
+      if (authRes.success && authRes.user) {
         onLoginSuccess(authRes.user.profile, false);
       } else {
-        setLoginError('Authentication failed. Please check your credentials.');
+        setLoginError(authRes.error || 'Authentication failed. Please check your credentials.');
       }
-    }, 600);
+    } catch (err: any) {
+      setIsLoginLoading(false);
+      setLoginError('An unexpected error occurred during login.');
+    }
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignupError('');
 
@@ -293,22 +132,25 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
     }
 
     setIsSignupLoading(true);
-    setTimeout(() => {
-      setIsSignupLoading(false);
-
-      const regRes = UserService.registerUser({
+    try {
+      const regRes = await UserService.registerUserApi({
         name: signupName.trim(),
         email: signupEmail.trim(),
         password: signupPassword
       });
 
-      if (regRes.user) {
+      setIsSignupLoading(false);
+
+      if (regRes.success && regRes.user) {
         onLoginSuccess(regRes.user.profile, true);
         setSignupSuccess(true);
       } else {
-        setSignupError('Account creation failed.');
+        setSignupError(regRes.error || 'Account creation failed.');
       }
-    }, 600);
+    } catch (err: any) {
+      setIsSignupLoading(false);
+      setSignupError('An unexpected error occurred during registration.');
+    }
   };
 
   const handleForgotSubmit = (e: React.FormEvent) => {
