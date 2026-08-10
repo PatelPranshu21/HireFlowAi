@@ -1,11 +1,10 @@
 import express, { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { pool } from './db.js'; // Ensure to use .js extension for ESM imports if needed, but the prompt says to use ESM import syntax.
-// Given node 18+, fetch is built-in.
+import { pool } from './db';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'hireflow-dev-secret-change-me';
+const JWT_SECRET = process.env.SESSION_SECRET || 'hireflow-dev-secret-change-me';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -14,7 +13,6 @@ export interface AuthRequest extends Request {
   };
 }
 
-// export authenticateToken middleware
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -28,7 +26,6 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   });
 };
 
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -53,7 +50,6 @@ router.post('/register', async (req, res) => {
       const user = result.rows[0];
       const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
       
-      // Don't send password hash back
       delete user.password_hash;
       res.json({ token, user });
     } finally {
@@ -65,7 +61,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -100,7 +95,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/google/callback
 router.get('/google/callback', async (req, res) => {
   try {
     const code = req.query.code as string;
@@ -108,7 +102,7 @@ router.get('/google/callback', async (req, res) => {
       return res.status(400).json({ error: 'No code provided' });
     }
 
-    const redirectUri = \`\${process.env.OAUTH_REDIRECT_BASE || 'http://localhost:3000'}/api/auth/google/callback\`;
+    const redirectUri = `${process.env.OAUTH_REDIRECT_BASE || 'http://localhost:3000'}/api/auth/google/callback`;
     
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -128,7 +122,7 @@ router.get('/google/callback', async (req, res) => {
     }
 
     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: \`Bearer \${tokenData.access_token}\` }
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userInfo = await userInfoResponse.json();
     
@@ -146,16 +140,16 @@ router.get('/google/callback', async (req, res) => {
           await client.query('UPDATE users SET google_id = $1 WHERE id = $2', [userInfo.id, user.id]);
         }
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-        res.redirect(\`/#dashboard?token=\${token}\`);
+        res.redirect(`/#dashboard?token=${token}`);
       } else {
         const newUserResult = await client.query(
-          \`INSERT INTO users (email, name, google_id, auth_provider, avatar, onboarding_completed)
-           VALUES ($1, $2, $3, 'google', $4, FALSE) RETURNING *\`,
+          `INSERT INTO users (email, name, google_id, auth_provider, avatar, onboarding_completed)
+           VALUES ($1, $2, $3, 'google', $4, FALSE) RETURNING *`,
           [userInfo.email, userInfo.name, userInfo.id, userInfo.picture]
         );
         user = newUserResult.rows[0];
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-        res.redirect(\`/#onboarding?token=\${token}\`);
+        res.redirect(`/#onboarding?token=${token}`);
       }
     } finally {
       client.release();
@@ -166,7 +160,6 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-// GET /api/auth/linkedin/callback
 router.get('/linkedin/callback', async (req, res) => {
   try {
     const code = req.query.code as string;
@@ -174,7 +167,7 @@ router.get('/linkedin/callback', async (req, res) => {
       return res.status(400).json({ error: 'No code provided' });
     }
 
-    const redirectUri = \`\${process.env.OAUTH_REDIRECT_BASE || 'http://localhost:3000'}/api/auth/linkedin/callback\`;
+    const redirectUri = `${process.env.OAUTH_REDIRECT_BASE || 'http://localhost:3000'}/api/auth/linkedin/callback`;
     
     const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
@@ -194,7 +187,7 @@ router.get('/linkedin/callback', async (req, res) => {
     }
 
     const userInfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
-      headers: { Authorization: \`Bearer \${tokenData.access_token}\` }
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userInfo = await userInfoResponse.json();
     
@@ -213,19 +206,19 @@ router.get('/linkedin/callback', async (req, res) => {
         }
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
         if (user.onboarding_completed) {
-          res.redirect(\`/#dashboard?token=\${token}\`);
+          res.redirect(`/#dashboard?token=${token}`);
         } else {
-          res.redirect(\`/#onboarding?token=\${token}\`);
+          res.redirect(`/#onboarding?token=${token}`);
         }
       } else {
         const newUserResult = await client.query(
-          \`INSERT INTO users (email, name, linkedin_id, auth_provider, avatar, onboarding_completed)
-           VALUES ($1, $2, $3, 'linkedin', $4, FALSE) RETURNING *\`,
+          `INSERT INTO users (email, name, linkedin_id, auth_provider, avatar, onboarding_completed)
+           VALUES ($1, $2, $3, 'linkedin', $4, FALSE) RETURNING *`,
           [userInfo.email, userInfo.name, userInfo.sub, userInfo.picture]
         );
         user = newUserResult.rows[0];
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-        res.redirect(\`/#onboarding?token=\${token}\`);
+        res.redirect(`/#onboarding?token=${token}`);
       }
     } finally {
       client.release();
@@ -236,7 +229,6 @@ router.get('/linkedin/callback', async (req, res) => {
   }
 });
 
-// GET /api/auth/me
 router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const client = await pool.connect();
@@ -263,7 +255,6 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// POST /api/auth/onboarding
 router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.id;
@@ -271,16 +262,15 @@ router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
       skills, technologies, preferred_roles, preferred_companies, 
       preferred_cities, preferred_industries, remote_preference, 
       expected_salary_min, expected_salary_max, target_industry, resume_uploaded,
-      name, title, experience_level, phone, target_role // basic user fields that could be updated
+      name, title, experience_level, phone, target_role
     } = req.body;
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      // Upsert onboarding data
       await client.query(
-        \`INSERT INTO user_onboarding (
+        `INSERT INTO user_onboarding (
           user_id, skills, technologies, preferred_roles, preferred_companies, 
           preferred_cities, preferred_industries, remote_preference, 
           expected_salary_min, expected_salary_max, target_industry, resume_uploaded
@@ -298,7 +288,7 @@ router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
           expected_salary_max = EXCLUDED.expected_salary_max,
           target_industry = EXCLUDED.target_industry,
           resume_uploaded = EXCLUDED.resume_uploaded,
-          updated_at = NOW()\`,
+          updated_at = NOW()`,
         [
           userId, skills || '{}', technologies || '{}', preferred_roles || '{}', preferred_companies || '{}',
           preferred_cities || '{}', preferred_industries || '{}', remote_preference || 'Remote',
@@ -306,18 +296,17 @@ router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
         ]
       );
 
-      // Update user basic profile
       let userUpdateQuery = 'UPDATE users SET onboarding_completed = TRUE, updated_at = NOW()';
       const userUpdateValues: any[] = [userId];
       let paramCount = 2;
 
-      if (name) { userUpdateQuery += \`, name = $\${paramCount++}\`; userUpdateValues.push(name); }
-      if (title) { userUpdateQuery += \`, title = $\${paramCount++}\`; userUpdateValues.push(title); }
-      if (experience_level) { userUpdateQuery += \`, experience_level = $\${paramCount++}\`; userUpdateValues.push(experience_level); }
-      if (phone) { userUpdateQuery += \`, phone = $\${paramCount++}\`; userUpdateValues.push(phone); }
-      if (target_role) { userUpdateQuery += \`, target_role = $\${paramCount++}\`; userUpdateValues.push(target_role); }
+      if (name) { userUpdateQuery += `, name = $${paramCount++}`; userUpdateValues.push(name); }
+      if (title) { userUpdateQuery += `, title = $${paramCount++}`; userUpdateValues.push(title); }
+      if (experience_level) { userUpdateQuery += `, experience_level = $${paramCount++}`; userUpdateValues.push(experience_level); }
+      if (phone) { userUpdateQuery += `, phone = $${paramCount++}`; userUpdateValues.push(phone); }
+      if (target_role) { userUpdateQuery += `, target_role = $${paramCount++}`; userUpdateValues.push(target_role); }
 
-      userUpdateQuery += \` WHERE id = $1\`;
+      userUpdateQuery += ` WHERE id = $1`;
       
       await client.query(userUpdateQuery, userUpdateValues);
 
@@ -335,13 +324,11 @@ router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// PUT /api/auth/profile
 router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.id;
     const updates = req.body;
     
-    // Whitelist allowed fields to update
     const allowedFields = [
       'name', 'title', 'experience_level', 'phone', 'target_role',
       'avatar', 'has_selected_plan', 'subscription_status', 'subscription_plan', 'tier'
@@ -350,12 +337,12 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
     const client = await pool.connect();
     try {
       const updateParts = [];
-      const values = [userId];
+      const values: any[] = [userId];
       let paramCount = 2;
 
       for (const [key, value] of Object.entries(updates)) {
         if (allowedFields.includes(key)) {
-          updateParts.push(\`\${key} = $\${paramCount}\`);
+          updateParts.push(`${key} = $${paramCount}`);
           values.push(value);
           paramCount++;
         }
@@ -365,7 +352,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
 
-      const query = \`UPDATE users SET \${updateParts.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *\`;
+      const query = `UPDATE users SET ${updateParts.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`;
       const result = await client.query(query, values);
       
       const user = result.rows[0];

@@ -2,6 +2,14 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, ParsedResumeData } from '../types';
 import { initialUserProfile } from '../data/mockData';
 import { UserService } from '../services/userService';
+import { 
+  PlanName, 
+  FeatureKey, 
+  PLANS, 
+  EntitlementCheckResult, 
+  checkEntitlement as calculateEntitlement, 
+  normalizeProfileSubscription 
+} from '../data/planConfig';
 
 export interface ResumeData {
   fileName?: string;
@@ -41,6 +49,10 @@ export interface AuthContextType {
   updateProfile: (updates: Partial<UserProfile>) => void;
   setResume: (resume: ResumeData | null) => void;
   startFreeTrial: () => void;
+  selectPlan: (planName: PlanName) => Promise<void>;
+  fastForwardTrial3Days: () => void;
+  checkEntitlement: (feature: FeatureKey) => EntitlementCheckResult;
+  incrementFeatureUsage: (feature: FeatureKey) => void;
   incrementApplications: () => void;
   incrementInterviews: () => void;
   incrementCodingSolved: () => void;
@@ -55,21 +67,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (activeUserId) {
       const userAccount = UserService.getUserById(activeUserId);
       if (userAccount && userAccount.profile) {
+        const { profile: normProfile } = normalizeProfileSubscription(userAccount.profile);
+        const trialExpiryMs = normProfile.trialExpiryDate ? new Date(normProfile.trialExpiryDate).getTime() : 0;
+        const nowMs = Date.now();
+        const diffHours = trialExpiryMs > nowMs ? (trialExpiryMs - nowMs) / (1000 * 60 * 60) : 0;
+
         return {
-          profile: userAccount.profile,
+          profile: normProfile,
           resume: null,
           stats: {
-            applicationsCount: userAccount.profile.appliedJobIds?.length || 0,
-            interviewsCount: userAccount.profile.interviewMetrics?.completedSessionsCount || 0,
-            codingSolvedCount: userAccount.profile.interviewMetrics?.solvedCodingCount || 0,
-            resumeScansCount: userAccount.profile.usageLimits?.atsAnalyses?.used || 0
+            applicationsCount: normProfile.appliedJobIds?.length || 0,
+            interviewsCount: normProfile.interviewMetrics?.completedSessionsCount || 0,
+            codingSolvedCount: normProfile.interviewMetrics?.solvedCodingCount || 0,
+            resumeScansCount: normProfile.usageLimits?.atsAnalyses?.used || 0
           },
           freeTrial: {
-            isTrialActive: userAccount.profile.subscriptionStatus === 'trialing',
-            trialStartedAt: userAccount.profile.trialStartDate || null,
-            trialExpiryAt: userAccount.profile.trialExpiryDate || null,
-            daysRemaining: 3,
-            isExpired: false
+            isTrialActive: normProfile.subscriptionStatus === 'trialing',
+            trialStartedAt: normProfile.trialStartDate || null,
+            trialExpiryAt: normProfile.trialExpiryDate || null,
+            daysRemaining: Math.max(0, Math.ceil(diffHours / 24)),
+            isExpired: normProfile.subscriptionStatus === 'expired'
           },
           isAuthenticated: true
         };
@@ -101,23 +118,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     UserService.getCurrentUserApi().then((res) => {
       if (res.success && res.user) {
-        const userProfile = res.user.profile;
-        if (userProfile) {
+        const rawProfile = res.user.profile;
+        if (rawProfile) {
+          const { profile: normProfile } = normalizeProfileSubscription(rawProfile);
+          const trialExpiryMs = normProfile.trialExpiryDate ? new Date(normProfile.trialExpiryDate).getTime() : 0;
+          const nowMs = Date.now();
+          const diffHours = trialExpiryMs > nowMs ? (trialExpiryMs - nowMs) / (1000 * 60 * 60) : 0;
+
           setState(prev => ({
             ...prev,
-            profile: userProfile,
+            profile: normProfile,
             stats: {
-              applicationsCount: userProfile.appliedJobIds?.length || 0,
-              interviewsCount: userProfile.interviewMetrics?.completedSessionsCount || 0,
-              codingSolvedCount: userProfile.interviewMetrics?.solvedCodingCount || 0,
-              resumeScansCount: userProfile.usageLimits?.atsAnalyses?.used || 0
+              applicationsCount: normProfile.appliedJobIds?.length || 0,
+              interviewsCount: normProfile.interviewMetrics?.completedSessionsCount || 0,
+              codingSolvedCount: normProfile.interviewMetrics?.solvedCodingCount || 0,
+              resumeScansCount: normProfile.usageLimits?.atsAnalyses?.used || 0
             },
             freeTrial: {
-              isTrialActive: userProfile.subscriptionStatus === 'trialing',
-              trialStartedAt: userProfile.trialStartDate || null,
-              trialExpiryAt: userProfile.trialExpiryDate || null,
-              daysRemaining: 3,
-              isExpired: false
+              isTrialActive: normProfile.subscriptionStatus === 'trialing',
+              trialStartedAt: normProfile.trialStartDate || null,
+              trialExpiryAt: normProfile.trialExpiryDate || null,
+              daysRemaining: Math.max(0, Math.ceil(diffHours / 24)),
+              isExpired: normProfile.subscriptionStatus === 'expired'
             },
             isAuthenticated: true
           }));
@@ -126,18 +148,132 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }).catch(() => {});
   }, []);
 
+  const checkEntitlement = (feature: FeatureKey): EntitlementCheckResult => {
+    if (!state.profile) {
+      return {
+        allowed: false,
+        reason: 'trial_expired',
+        feature,
+        featureName: feature,
+        used: 0,
+        max: 0,
+        planName: '3-Day Free Trial',
+        message: 'Please sign in to access HireFlow AI career tools.'
+      };
+    }
+
+    return calculateEntitlement(state.profile, feature);
+  };
+
+  const incrementFeatureUsage = (feature: FeatureKey) => {
+    setState(prev => {
+      if (!prev.profile) return prev;
+      const usageKey = feature === 'mockInterviews' ? 'aiInterviews' : feature;
+      const currentLimits = prev.profile.usageLimits || {
+        resumeScans: { used: 0, max: 3 },
+        atsAnalyses: { used: 0, max: 3 },
+        aiInterviews: { used: 0, max: 0 },
+        coverLetterGenerations: { used: 0, max: 3 },
+        jobMatchAnalyses: { used: 0, max: 5 }
+      };
+
+      const updatedLimits = {
+        ...currentLimits,
+        [usageKey]: {
+          ...(currentLimits as any)[usageKey],
+          used: ((currentLimits as any)[usageKey]?.used || 0) + 1
+        }
+      };
+
+      const updatedProfile: UserProfile = {
+        ...prev.profile,
+        usageLimits: updatedLimits
+      };
+
+      UserService.updateUserProfile(prev.profile.id, { usageLimits: updatedLimits });
+
+      return {
+        ...prev,
+        profile: updatedProfile,
+        stats: {
+          ...prev.stats,
+          resumeScansCount: updatedLimits.atsAnalyses?.used || prev.stats.resumeScansCount
+        }
+      };
+    });
+  };
+
   const updateProfile = (updates: Partial<UserProfile>) => {
     setState(prev => {
       if (!prev.profile) return prev;
-      const updatedProfile = UserService.updateUserProfile(prev.profile.id, updates) || {
-        ...prev.profile,
-        ...updates
-      };
+      const merged = { ...prev.profile, ...updates };
+      const { profile: normProfile } = normalizeProfileSubscription(merged);
+
+      const updatedProfile = UserService.updateUserProfile(prev.profile.id, normProfile) || normProfile;
       UserService.updateProfileApi(updates).catch(() => {});
+
+      const trialExpiryMs = normProfile.trialExpiryDate ? new Date(normProfile.trialExpiryDate).getTime() : 0;
+      const nowMs = Date.now();
+      const diffHours = trialExpiryMs > nowMs ? (trialExpiryMs - nowMs) / (1000 * 60 * 60) : 0;
+
       return {
         ...prev,
-        profile: updatedProfile
+        profile: updatedProfile,
+        freeTrial: {
+          isTrialActive: normProfile.subscriptionStatus === 'trialing',
+          trialStartedAt: normProfile.trialStartDate || null,
+          trialExpiryAt: normProfile.trialExpiryDate || null,
+          daysRemaining: Math.max(0, Math.ceil(diffHours / 24)),
+          isExpired: normProfile.subscriptionStatus === 'expired'
+        }
       };
+    });
+  };
+
+  const selectPlan = async (planName: PlanName) => {
+    const planDef = PLANS[planName];
+    if (!planDef) return;
+
+    try {
+      const res = await fetch('/api/subscription/update-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planName, userId: state.profile?.id })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.profile) {
+          updateProfile(data.profile);
+          return;
+        }
+      }
+    } catch (e) {}
+
+    // Fallback local update if backend un-reachable
+    const now = new Date();
+    const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    updateProfile({
+      subscriptionPlan: planName,
+      subscriptionStatus: planName === '3-Day Free Trial' ? 'trialing' : 'active',
+      tier: planName === 'Pro' ? 'Gold Tier' : (planName === 'Premium' ? 'Premium Plan' : (planName === 'Basic' ? 'Basic' : '3-Day Free Trial')),
+      hasSelectedPlan: true,
+      nextBillingDate: nextMonth.toISOString().split('T')[0],
+      usageLimits: {
+        resumeScans: { used: 0, max: planDef.limits.atsAnalyses },
+        atsAnalyses: { used: 0, max: planDef.limits.atsAnalyses },
+        aiInterviews: { used: 0, max: planDef.limits.mockInterviews },
+        coverLetterGenerations: { used: 0, max: planDef.limits.coverLetterGenerations },
+        jobMatchAnalyses: { used: 0, max: planDef.limits.jobMatchAnalyses }
+      }
+    });
+  };
+
+  const fastForwardTrial3Days = () => {
+    const pastDate = new Date(Date.now() - 1000).toISOString();
+    updateProfile({
+      subscriptionStatus: 'expired',
+      tier: '3-Day Free Trial',
+      trialExpiryDate: pastDate
     });
   };
 
@@ -361,6 +497,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateProfile,
         setResume,
         startFreeTrial,
+        selectPlan,
+        fastForwardTrial3Days,
+        checkEntitlement,
+        incrementFeatureUsage,
         incrementApplications,
         incrementInterviews,
         incrementCodingSolved,

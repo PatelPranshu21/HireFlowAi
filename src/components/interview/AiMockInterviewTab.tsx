@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, ResumeVersion, InterviewQuestion, InterviewFeedbackReport } from '../../types';
 import { aiInterviewService } from '../../services/aiInterviewService';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Play, 
   Sparkles, 
@@ -32,6 +33,7 @@ export const AiMockInterviewTab: React.FC<AiMockInterviewTabProps> = ({
   resumeData,
   onSessionComplete
 }) => {
+  const { checkEntitlement, incrementFeatureUsage } = useAuth();
   // Setup State
   const [selectedDomain, setSelectedDomain] = useState<string>('Full Stack');
   const [selectedLevel, setSelectedLevel] = useState<string>('Intermediate');
@@ -121,6 +123,14 @@ export const AiMockInterviewTab: React.FC<AiMockInterviewTabProps> = ({
 
   // Start Session
   const handleStartSession = async () => {
+    const entitlement = checkEntitlement('mockInterviews');
+    if (!entitlement.allowed) {
+      if ((window as any).__showLimitReachedModal) {
+        (window as any).__showLimitReachedModal(entitlement);
+      }
+      return;
+    }
+
     const resumeSkills = resumeData?.parsedData?.skills || ['React', 'Node.js', 'Python', 'AWS'];
     const generated = await aiInterviewService.generateQuestions(
       selectedDomain,
@@ -136,6 +146,8 @@ export const AiMockInterviewTab: React.FC<AiMockInterviewTabProps> = ({
     setCurrentEvaluation(null);
     setFinalReport(null);
     setIsSessionActive(true);
+
+    incrementFeatureUsage('mockInterviews');
 
     const initialDuration = selectedMode.includes('10') ? 600 : selectedMode.includes('60') ? 3600 : 1800;
     setSecondsRemaining(initialDuration);

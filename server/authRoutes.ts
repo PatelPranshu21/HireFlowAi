@@ -130,8 +130,8 @@ export function verifyAuthHeader(req: Request): string | null {
 
 // ------------------- AUTH ENDPOINTS -------------------
 
-// 1. Email Signup
-router.post('/signup', async (req: Request, res: Response) => {
+// 1. Email Signup / Register
+const handleSignup = async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
     if (!email || !password) {
@@ -218,7 +218,10 @@ router.post('/signup', async (req: Request, res: Response) => {
     console.error('Error in /api/auth/signup:', err);
     return res.status(500).json({ error: 'Signup failed', details: err.message });
   }
-});
+};
+
+router.post('/signup', handleSignup);
+router.post('/register', handleSignup);
 
 // 2. Email Login
 router.post('/login', async (req: Request, res: Response) => {

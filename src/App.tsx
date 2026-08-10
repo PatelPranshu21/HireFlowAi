@@ -48,6 +48,8 @@ import { SupportView } from './components/SupportView';
 import { ProfileView } from './components/ProfileView';
 import { BillingView } from './components/BillingView';
 import { NotificationsModal } from './components/NotificationsModal';
+import { LimitReachedModal } from './components/LimitReachedModal';
+import { EntitlementCheckResult } from './data/planConfig';
 
 function MainAppContent() {
   const {
@@ -93,6 +95,17 @@ function MainAppContent() {
   const [analysis] = useState<ResumeAnalysisResult>(defaultResumeAnalysis);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [authRedirectMessage, setAuthRedirectMessage] = useState<string>('');
+
+  const [limitModal, setLimitModal] = useState<{
+    isOpen: boolean;
+    entitlement: EntitlementCheckResult | null;
+  }>({ isOpen: false, entitlement: null });
+
+  useEffect(() => {
+    (window as any).__showLimitReachedModal = (entitlement: EntitlementCheckResult) => {
+      setLimitModal({ isOpen: true, entitlement });
+    };
+  }, []);
 
   // Handle OAuth 2.0 callback redirect parameters (#oauth_callback?token=...&tab=...&onboarding=...)
   useEffect(() => {
@@ -446,6 +459,17 @@ function MainAppContent() {
       <AiCareerCoachWidget />
       <DailyBriefingModal />
       <GlobalSearchModal />
+
+      {/* Limit Reached & Trial Expiry Modal */}
+      <LimitReachedModal
+        isOpen={limitModal.isOpen}
+        entitlement={limitModal.entitlement}
+        onClose={() => setLimitModal({ isOpen: false, entitlement: null })}
+        onUpgrade={() => {
+          setLimitModal({ isOpen: false, entitlement: null });
+          handleNavigate('billing');
+        }}
+      />
 
       {/* Notifications Drawer */}
       {isNotificationsOpen && (

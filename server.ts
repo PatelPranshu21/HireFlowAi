@@ -6,6 +6,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { initDb } from "./src/db/postgres";
 import authRoutes from "./server/authRoutes";
+import { pool } from "./db";
+import { PLANS, PlanName, normalizeProfileSubscription } from "./src/data/planConfig";
+import { 
+  resolveUserProfile, 
+  enforceFeatureEntitlement, 
+  recordFeatureUsage, 
+  SubscriptionRequest 
+} from "./server/subscriptionMiddleware";
 
 dotenv.config();
 
@@ -38,14 +46,81 @@ function getGenAI(): GoogleGenAI {
   return aiClient;
 }
 
+// ------------------- SUBSCRIPTION & USAGE ENDPOINTS -------------------
+
+app.get("/api/subscription/usage", async (req, res) => {
+  try {
+    const userProfile = await resolveUserProfile(req);
+    const { profile: normProfile } = normalizeProfileSubscription(userProfile);
+    res.json({
+      success: true,
+      profile: normProfile,
+      plans: PLANS
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch subscription status", details: err.message });
+  }
+});
+
+app.post("/api/subscription/update-plan", async (req, res) => {
+  try {
+    const { planName, userId } = req.body;
+    if (!planName || !PLANS[planName as PlanName]) {
+      return res.status(400).json({ error: "Invalid planName" });
+    }
+
+    const reqObj: SubscriptionRequest = req;
+    if (userId) reqObj.body.userId = userId;
+    const userProfile = await resolveUserProfile(reqObj);
+
+    const now = new Date();
+    const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    userProfile.subscriptionPlan = planName;
+    userProfile.subscriptionStatus = planName === '3-Day Free Trial' ? 'trialing' : 'active';
+    userProfile.tier = planName === 'Pro' ? 'Gold Tier' : (planName === 'Premium' ? 'Premium Plan' : (planName === 'Basic' ? 'Basic' : '3-Day Free Trial'));
+    userProfile.nextBillingDate = nextMonth.toISOString().split('T')[0];
+
+    const planDef = PLANS[planName as PlanName];
+    userProfile.usageLimits = {
+      resumeScans: { used: 0, max: planDef.limits.atsAnalyses },
+      atsAnalyses: { used: 0, max: planDef.limits.atsAnalyses },
+      aiInterviews: { used: 0, max: planDef.limits.mockInterviews },
+      coverLetterGenerations: { used: 0, max: planDef.limits.coverLetterGenerations },
+      jobMatchAnalyses: { used: 0, max: planDef.limits.jobMatchAnalyses }
+    };
+
+    const { profile: normProfile } = normalizeProfileSubscription(userProfile);
+
+    const targetUserId = userId || normProfile.id;
+    if (targetUserId && targetUserId !== 'usr_guest') {
+      try {
+        const client = await pool.connect();
+        try {
+          await client.query(
+            `UPDATE users SET subscription_plan = $1, subscription_status = $2, tier = $3, profile_data = $4 WHERE id = $5`,
+            [normProfile.subscriptionPlan, normProfile.subscriptionStatus, normProfile.tier, JSON.stringify(normProfile), targetUserId]
+          );
+        } finally {
+          client.release();
+        }
+      } catch (e) {}
+    }
+
+    res.json({ success: true, profile: normProfile });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update plan", details: err.message });
+  }
+});
+
 // ------------------- API ENDPOINTS -------------------
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// 1. Analyze Resume / ATS Scoring
-app.post("/api/ai/analyze-resume", async (req, res) => {
+// 1. Analyze Resume / ATS Scoring (Enforced for 'atsAnalyses')
+app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeText, targetRole } = req.body;
     if (!resumeText) {
@@ -54,7 +129,8 @@ app.post("/api/ai/analyze-resume", async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      // Return realistic AI structure as fallback
+      // Record feature usage on successful completion
+      await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
       return res.json({
         overallScore: 82,
         summary: `Strong resume for ${targetRole || 'Software Engineering'} roles. Highlights good frontend and cloud experience. Missing explicit metrics for scaling operations.`,
@@ -142,6 +218,7 @@ app.post("/api/ai/analyze-resume", async (req, res) => {
     });
 
     const parsed = JSON.parse(response.text || "{}");
+    await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/analyze-resume:", err);
@@ -150,7 +227,7 @@ app.post("/api/ai/analyze-resume", async (req, res) => {
 });
 
 // 2. Job Match Scoring & Missing Skills Analysis
-app.post("/api/ai/match-job", async (req, res) => {
+app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeText, jobDescription, jobTitle, company } = req.body;
     if (!jobDescription) {
@@ -159,6 +236,7 @@ app.post("/api/ai/match-job", async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
+      await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
       return res.json({
         matchScore: 86,
         matchingSkills: ["React", "TypeScript", "Node.js", "Git", "REST APIs"],
@@ -208,7 +286,9 @@ app.post("/api/ai/match-job", async (req, res) => {
       },
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const parsed = JSON.parse(response.text || "{}");
+    await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
+    res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/match-job:", err);
     res.status(500).json({ error: "Failed to perform job match analysis", details: err.message });
@@ -305,12 +385,13 @@ app.post("/api/ai/parse-resume", async (req, res) => {
 });
 
 // 2c. AI Resume Tailoring against JD
-app.post("/api/ai/tailor-resume", async (req, res) => {
+app.post("/api/ai/tailor-resume", enforceFeatureEntitlement('jobMatchAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeContent, jobDescription, targetRole, company } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
+      await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
       return res.json({
         matchPercentage: 92,
         missingSkills: ["GraphQL Subscriptions", "Kubernetes Mesh"],
@@ -350,7 +431,9 @@ app.post("/api/ai/tailor-resume", async (req, res) => {
       config: { responseMimeType: "application/json" }
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const parsed = JSON.parse(response.text || "{}");
+    await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
+    res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/tailor-resume:", err);
     res.status(500).json({ error: "Failed to tailor resume", details: err.message });
@@ -358,12 +441,13 @@ app.post("/api/ai/tailor-resume", async (req, res) => {
 });
 
 // 2d. Section / Bullet Point AI Optimizer
-app.post("/api/ai/improve-section", async (req, res) => {
+app.post("/api/ai/improve-section", enforceFeatureEntitlement('bulletRewrites'), async (req: SubscriptionRequest, res) => {
   try {
     const { sectionName, currentText, improvementType, targetRole } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
+      await recordFeatureUsage(req.userId, req.userProfile, 'bulletRewrites', req.guestKey);
       return res.json({
         originalText: currentText || "Built backend web services.",
         improvedText: sectionName === 'summary' 
@@ -395,21 +479,24 @@ app.post("/api/ai/improve-section", async (req, res) => {
       config: { responseMimeType: "application/json" }
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const parsed = JSON.parse(response.text || "{}");
+    await recordFeatureUsage(req.userId, req.userProfile, 'bulletRewrites', req.guestKey);
+    res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/improve-section:", err);
     res.status(500).json({ error: "Failed to improve resume section", details: err.message });
   }
 });
 
-// 3. Cover Letter Generator
-app.post("/api/ai/generate-cover-letter", async (req, res) => {
+// 3. Cover Letter Generator (Enforced for 'coverLetterGenerations')
+app.post("/api/ai/generate-cover-letter", enforceFeatureEntitlement('coverLetterGenerations'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeText, jobDescription, jobTitle, company, tone } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       const selectedTone = tone || "professional & confident";
+      await recordFeatureUsage(req.userId, req.userProfile, 'coverLetterGenerations', req.guestKey);
       return res.json({
         coverLetter: `Dear Hiring Manager at ${company || 'the Hiring Team'},
 
@@ -445,6 +532,7 @@ Alex Dev`
       contents: prompt,
     });
 
+    await recordFeatureUsage(req.userId, req.userProfile, 'coverLetterGenerations', req.guestKey);
     res.json({ coverLetter: response.text });
   } catch (err: any) {
     console.error("Error in /api/ai/generate-cover-letter:", err);
@@ -452,13 +540,14 @@ Alex Dev`
   }
 });
 
-// 4. Interview Feedback / Coach Evaluation
-app.post("/api/ai/interview-feedback", async (req, res) => {
+// 4. Interview Feedback / Coach Evaluation (Enforced for 'mockInterviews')
+app.post("/api/ai/interview-feedback", enforceFeatureEntitlement('mockInterviews'), async (req: SubscriptionRequest, res) => {
   try {
     const { question, answer, role } = req.body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
+      await recordFeatureUsage(req.userId, req.userProfile, 'mockInterviews', req.guestKey);
       return res.json({
         score: 88,
         starBreakdown: {
@@ -511,7 +600,9 @@ app.post("/api/ai/interview-feedback", async (req, res) => {
       },
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const parsed = JSON.parse(response.text || "{}");
+    await recordFeatureUsage(req.userId, req.userProfile, 'mockInterviews', req.guestKey);
+    res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/interview-feedback:", err);
     res.status(500).json({ error: "Failed to evaluate interview response", details: err.message });

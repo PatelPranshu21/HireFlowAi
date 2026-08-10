@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { UserProfile, TransactionItem } from '../types';
-import { CreditCard, Check, Sparkles, Shield, Zap, CheckCircle2, ArrowRight, Clock, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
+import { CreditCard, Check, Sparkles, Shield, Zap, CheckCircle2, ArrowRight, Clock, AlertTriangle, RefreshCw, XCircle, BarChart3, Lock } from 'lucide-react';
 import { calculateTrialRemaining } from '../utils/trialUtils';
+import { useAuth } from '../context/AuthContext';
+import { PLANS, PlanName, FEATURE_NAMES } from '../data/planConfig';
 
 interface BillingViewProps {
   user: UserProfile;
@@ -9,6 +11,7 @@ interface BillingViewProps {
 }
 
 export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) => {
+  const { selectPlan, fastForwardTrial3Days } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<string>(user.subscriptionPlan || user.tier);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [upgraded, setUpgraded] = useState(false);
@@ -18,76 +21,31 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
   const trialInfo = calculateTrialRemaining(user.trialStartDate, user.trialExpiryDate);
 
   const plans = [
-    {
-      name: '3-Day Free Trial',
-      priceMonthly: 0,
-      priceYearly: 0,
-      description: 'Explore full ATS scoring and AI matchers with 3 days unrestricted access.',
-      features: [
-        'Full ATS Resume Scoring',
-        '3 AI Cover Letter Generations',
-        'AI Job Recommendation Engine',
-        'Preserves all saved data after expiration'
-      ]
-    },
-    {
-      name: 'Basic',
-      priceMonthly: 9,
-      priceYearly: 7,
-      description: 'Essential AI resume tools for active job seekers sending weekly applications.',
-      features: [
-        '10 ATS Resume Audits / mo',
-        '1-Click AI Bullet Rewriter',
-        'Job Matcher & Keyword Gap Finder',
-        '10 AI Cover Letters / mo',
-        'Email Support'
-      ]
-    },
-    {
-      name: 'Pro',
-      priceMonthly: 19,
-      priceYearly: 15,
-      popular: true,
-      description: 'Complete career acceleration suite for tech professionals targeting top roles.',
-      features: [
-        'Unlimited ATS Resume Audits',
-        'Unlimited Bullet Rewriting & Impact Metrics',
-        'Unlimited Job Description Matching',
-        'Unlimited AI Cover Letter Studio',
-        '30 AI Mock Interview Prep Sessions / mo',
-        'STAR Framework Detailed Scoring',
-        'Priority 24/7 Support'
-      ]
-    },
-    {
-      name: 'Premium',
-      priceMonthly: 39,
-      priceYearly: 31,
-      description: 'Maximum power with 1-on-1 AI Career Coach & live negotiation guidance.',
-      features: [
-        'Everything in Pro Plan',
-        'Unlimited AI Mock Interview Coach',
-        'LinkedIn Headline & Strategy Suite',
-        'Salary Negotiation Counteroffer Scripts',
-        'Dedicated AI Career Coach Assistant'
-      ]
-    }
+    PLANS['3-Day Free Trial'],
+    PLANS['Basic'],
+    PLANS['Pro'],
+    PLANS['Premium']
   ];
 
-  const handleSelectPlan = (planName: string) => {
+  const handleSelectPlan = async (planName: string) => {
     setSelectedPlan(planName);
-    onUpdateUser({ 
-      subscriptionPlan: planName as any,
-      subscriptionStatus: 'active',
-      tier: planName === 'Pro' ? 'Gold Tier' : (planName === 'Premium' ? 'Premium Plan' : 'Basic')
-    });
+    await selectPlan(planName as PlanName);
     setUpgraded(true);
-    setTimeout(() => setUpgraded(false), 3000);
+    setTimeout(() => setUpgraded(false), 3500);
   };
 
   const handleCancelSubscription = () => {
     onUpdateUser({ subscriptionStatus: 'canceled' });
     setCancelModal(false);
+  };
+
+  const currentPlanDef = PLANS[user.subscriptionPlan as PlanName] || PLANS['3-Day Free Trial'];
+  const usage = user.usageLimits || {
+    resumeScans: { used: 0, max: currentPlanDef.limits.atsAnalyses },
+    atsAnalyses: { used: 0, max: currentPlanDef.limits.atsAnalyses },
+    aiInterviews: { used: 0, max: currentPlanDef.limits.mockInterviews },
+    coverLetterGenerations: { used: 0, max: currentPlanDef.limits.coverLetterGenerations },
+    jobMatchAnalyses: { used: 0, max: currentPlanDef.limits.jobMatchAnalyses }
   };
 
   return (
@@ -146,14 +104,7 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
           <div className="flex gap-2">
             {user.subscriptionStatus === 'trialing' && (
               <button 
-                onClick={() => {
-                  const pastDate = new Date(Date.now() - 1000).toISOString();
-                  onUpdateUser({ 
-                    subscriptionStatus: 'expired',
-                    tier: 'Trial Expired',
-                    trialExpiryDate: pastDate
-                  });
-                }}
+                onClick={fastForwardTrial3Days}
                 className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -196,6 +147,104 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
           <div className="bg-[#11131c] border border-white/10 rounded-2xl p-4 space-y-1">
             <span className="text-white/40 text-[10px] uppercase font-bold">Next Billing Date</span>
             <p className="font-bold text-white text-sm">{user.nextBillingDate || '2026-08-25'}</p>
+          </div>
+        </div>
+
+        {/* Usage Limits Meters Breakdown */}
+        <div className="pt-4 border-t border-white/10 space-y-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-blue-400" />
+            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white">Monthly Feature Usage & Entitlements</h4>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+            {/* 1. ATS Resume Audits Meter */}
+            <div className="bg-[#11131c] border border-white/10 rounded-2xl p-4 space-y-2">
+              <div className="flex justify-between items-center text-white/70">
+                <span>ATS Resume Audits</span>
+                <span className="font-bold text-white">
+                  {currentPlanDef.limits.atsAnalyses === -1
+                    ? 'Unlimited'
+                    : `${usage.atsAnalyses?.used || 0} / ${currentPlanDef.limits.atsAnalyses}`}
+                </span>
+              </div>
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    currentPlanDef.limits.atsAnalyses === -1
+                      ? 'bg-green-500 w-full'
+                      : ((usage.atsAnalyses?.used || 0) >= currentPlanDef.limits.atsAnalyses)
+                      ? 'bg-amber-500 w-full'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{
+                    width: currentPlanDef.limits.atsAnalyses === -1
+                      ? '100%'
+                      : `${Math.min(100, Math.round(((usage.atsAnalyses?.used || 0) / Math.max(1, currentPlanDef.limits.atsAnalyses)) * 100))}%`
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 2. AI Cover Letter Studio Meter */}
+            <div className="bg-[#11131c] border border-white/10 rounded-2xl p-4 space-y-2">
+              <div className="flex justify-between items-center text-white/70">
+                <span>AI Cover Letter Studio</span>
+                <span className="font-bold text-white">
+                  {currentPlanDef.limits.coverLetterGenerations === -1
+                    ? 'Unlimited'
+                    : `${usage.coverLetterGenerations?.used || 0} / ${currentPlanDef.limits.coverLetterGenerations}`}
+                </span>
+              </div>
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    currentPlanDef.limits.coverLetterGenerations === -1
+                      ? 'bg-green-500 w-full'
+                      : ((usage.coverLetterGenerations?.used || 0) >= currentPlanDef.limits.coverLetterGenerations)
+                      ? 'bg-amber-500 w-full'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{
+                    width: currentPlanDef.limits.coverLetterGenerations === -1
+                      ? '100%'
+                      : `${Math.min(100, Math.round(((usage.coverLetterGenerations?.used || 0) / Math.max(1, currentPlanDef.limits.coverLetterGenerations)) * 100))}%`
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 3. AI Mock Interview Prep Meter */}
+            <div className="bg-[#11131c] border border-white/10 rounded-2xl p-4 space-y-2">
+              <div className="flex justify-between items-center text-white/70">
+                <span>AI Mock Interview Prep</span>
+                <span className="font-bold text-white">
+                  {currentPlanDef.limits.mockInterviews === -1
+                    ? 'Unlimited'
+                    : currentPlanDef.limits.mockInterviews === 0
+                    ? '0 (Requires Pro)'
+                    : `${usage.aiInterviews?.used || 0} / ${currentPlanDef.limits.mockInterviews}`}
+                </span>
+              </div>
+              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    currentPlanDef.limits.mockInterviews === -1
+                      ? 'bg-green-500 w-full'
+                      : currentPlanDef.limits.mockInterviews === 0
+                      ? 'bg-white/10 w-0'
+                      : ((usage.aiInterviews?.used || 0) >= currentPlanDef.limits.mockInterviews)
+                      ? 'bg-amber-500 w-full'
+                      : 'bg-blue-500'
+                  }`}
+                  style={{
+                    width: currentPlanDef.limits.mockInterviews <= 0
+                      ? '0%'
+                      : `${Math.min(100, Math.round(((usage.aiInterviews?.used || 0) / Math.max(1, currentPlanDef.limits.mockInterviews)) * 100))}%`
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, ResumeVersion, TailorResumeResponse } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Wand2, 
   Briefcase, 
@@ -51,6 +52,7 @@ export const ResumeTailoringTab: React.FC<ResumeTailoringTabProps> = ({
   onSaveTailoredVersion,
   onJobHubNotify
 }) => {
+  const { checkEntitlement, incrementFeatureUsage } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState<string>('jp_1');
   const [targetCompany, setTargetCompany] = useState('Stripe');
   const [targetRole, setTargetRole] = useState('Senior Frontend Engineer');
@@ -69,6 +71,14 @@ export const ResumeTailoringTab: React.FC<ResumeTailoringTabProps> = ({
   };
 
   const handleGenerateTailoredResume = async () => {
+    const entitlement = checkEntitlement('jobMatchAnalyses');
+    if (!entitlement.allowed) {
+      if ((window as any).__showLimitReachedModal) {
+        (window as any).__showLimitReachedModal(entitlement);
+      }
+      return;
+    }
+
     setIsTailoring(true);
     setTailorResult(null);
 
@@ -84,8 +94,18 @@ export const ResumeTailoringTab: React.FC<ResumeTailoringTabProps> = ({
         })
       });
 
+      if (res.status === 403) {
+        const errData = await res.json();
+        if ((window as any).__showLimitReachedModal) {
+          (window as any).__showLimitReachedModal(errData);
+        }
+        return;
+      }
+
       const data: TailorResumeResponse = await res.json();
       setTailorResult(data);
+
+      incrementFeatureUsage('jobMatchAnalyses');
 
       // Create tailored version
       const newTailoredVersion: ResumeVersion = {
