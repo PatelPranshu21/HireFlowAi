@@ -594,12 +594,14 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   };
 
   const generateAiDailySchedule = () => {
-    const generated = ProductivityService.generateAiSchedule(calendarEvents, prodTasks, prodGoals);
-    generated.forEach(evt => CalendarService.addEvent(evt));
-    setCalendarEvents(CalendarService.getEvents());
+    addNotification({
+      title: 'AI Daily Schedule (Coming Soon)',
+      message: 'Real-time AI daily schedule generation and smart calendar sync will be available soon.',
+      type: 'info'
+    });
     pushCoachMessage({
       type: 'recommendation',
-      message: `AI Daily Schedule generated with 4 prioritized focus slots! Check your Smart Calendar.`,
+      message: 'AI Daily Schedule Generation feature coming soon in an upcoming update.',
       actionText: 'View Calendar',
       actionTab: 'calendar'
     });

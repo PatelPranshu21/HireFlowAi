@@ -423,9 +423,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       targetProfile = userProfileOrEmail;
       UserService.setActiveUserId(targetProfile.id);
     } else if (typeof userProfileOrEmail === 'string') {
-      const authRes = UserService.authenticateUser({ email: userProfileOrEmail });
-      if (authRes.user) {
-        targetProfile = authRes.user.profile;
+      const activeId = UserService.getActiveUserId();
+      if (activeId) {
+        const acc = UserService.getUserById(activeId);
+        if (acc && acc.email.toLowerCase() === userProfileOrEmail.toLowerCase()) {
+          targetProfile = acc.profile;
+        }
       }
     }
 
@@ -437,29 +440,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    if (!targetProfile) {
-      // Fallback fallback
-      const authRes = UserService.authenticateUser({ email: 'pranshupatel3222@gmail.com' });
-      targetProfile = authRes.user?.profile || null;
-    }
-
     if (targetProfile) {
       UserService.setActiveUserId(targetProfile.id);
+      const { profile: normProfile } = normalizeProfileSubscription(targetProfile);
       setState({
-        profile: targetProfile,
+        profile: normProfile,
         resume: null,
         stats: {
-          applicationsCount: targetProfile.appliedJobIds?.length || 0,
-          interviewsCount: targetProfile.interviewMetrics?.completedSessionsCount || 0,
-          codingSolvedCount: targetProfile.interviewMetrics?.solvedCodingCount || 0,
-          resumeScansCount: targetProfile.usageLimits?.atsAnalyses?.used || 0
+          applicationsCount: normProfile.appliedJobIds?.length || 0,
+          interviewsCount: normProfile.interviewMetrics?.completedSessionsCount || 0,
+          codingSolvedCount: normProfile.interviewMetrics?.solvedCodingCount || 0,
+          resumeScansCount: normProfile.usageLimits?.atsAnalyses?.used || 0
         },
         freeTrial: {
-          isTrialActive: targetProfile.subscriptionStatus === 'trialing',
-          trialStartedAt: targetProfile.trialStartDate || null,
-          trialExpiryAt: targetProfile.trialExpiryDate || null,
+          isTrialActive: normProfile.subscriptionStatus === 'trialing',
+          trialStartedAt: normProfile.trialStartDate || null,
+          trialExpiryAt: normProfile.trialExpiryDate || null,
           daysRemaining: 3,
-          isExpired: false
+          isExpired: normProfile.subscriptionStatus === 'expired'
         },
         isAuthenticated: true
       });

@@ -19,22 +19,7 @@ export class ProductivityService {
   // --- TASKS ---
   public static getTasks(userId?: string): ProductivityTask[] {
     const uid = userId || this.getActiveUserId();
-    const defaults: ProductivityTask[] = [
-      {
-        id: 'pt_1',
-        title: 'Tailor resume bullet points for Target Senior position',
-        description: 'Quantify throughput impact (e.g. reduced p99 latency by 35% with Redis caching).',
-        category: 'Resume',
-        priority: 'high',
-        status: 'in_progress',
-        dueDate: 'Today',
-        estimatedMinutes: 30,
-        completed: false,
-        notes: 'Target keywords: Distributed Systems, Web Services, Architecture'
-      }
-    ];
-
-    return UserService.getUserScopedData<ProductivityTask[]>(uid, 'prod_tasks', defaults);
+    return UserService.getUserScopedData<ProductivityTask[]>(uid, 'prod_tasks', []);
   }
 
   public static saveTasks(tasks: ProductivityTask[], userId?: string): void {
@@ -45,23 +30,7 @@ export class ProductivityService {
   // --- NOTES ---
   public static getNotes(userId?: string): ProductivityNote[] {
     const uid = userId || this.getActiveUserId();
-    const defaults: ProductivityNote[] = [
-      {
-        id: 'pn_1',
-        title: 'Technical Interview Strategy & STAR Metrics',
-        content: `Key Talking Points for Interviews:
-- Scaled distributed messaging cluster handling 250k events/sec.
-- Optimized database query execution plan reducing p99 latency from 180ms to 24ms.`,
-        category: 'Interview Notes',
-        pinned: true,
-        favorite: true,
-        archived: false,
-        tags: ['System Design', 'STAR', 'Distributed Systems'],
-        updatedAt: 'Just now'
-      }
-    ];
-
-    return UserService.getUserScopedData<ProductivityNote[]>(uid, 'prod_notes', defaults);
+    return UserService.getUserScopedData<ProductivityNote[]>(uid, 'prod_notes', []);
   }
 
   public static saveNotes(notes: ProductivityNote[], userId?: string): void {
@@ -72,21 +41,7 @@ export class ProductivityService {
   // --- GOALS ---
   public static getGoals(userId?: string): ProductivityGoal[] {
     const uid = userId || this.getActiveUserId();
-    const defaults: ProductivityGoal[] = [
-      {
-        id: 'pg_1',
-        title: 'Solve 20 LeetCode / DSA Problems',
-        targetMetric: 'Problems Solved',
-        currentProgress: 5,
-        targetProgress: 20,
-        timeframe: 'weekly',
-        category: 'Technical Prep',
-        completed: false,
-        unit: 'problems'
-      }
-    ];
-
-    return UserService.getUserScopedData<ProductivityGoal[]>(uid, 'prod_goals', defaults);
+    return UserService.getUserScopedData<ProductivityGoal[]>(uid, 'prod_goals', []);
   }
 
   public static saveGoals(goals: ProductivityGoal[], userId?: string): void {
@@ -108,13 +63,13 @@ export class ProductivityService {
   public static getStreaks(userId?: string): ProductivityStreaks {
     const uid = userId || this.getActiveUserId();
     const defaults: ProductivityStreaks = {
-      learningStreakDays: 1,
+      learningStreakDays: 0,
       interviewStreakDays: 0,
-      applicationStreakDays: 1,
-      totalStudyHours: 2.5,
-      totalFocusHours: 1.5,
-      completedTasksCount: 3,
-      productivityScore: 75
+      applicationStreakDays: 0,
+      totalStudyHours: 0,
+      totalFocusHours: 0,
+      completedTasksCount: 0,
+      productivityScore: 0
     };
 
     return UserService.getUserScopedData<ProductivityStreaks>(uid, 'prod_streaks', defaults);
@@ -181,62 +136,6 @@ export class ProductivityService {
     tasks: ProductivityTask[],
     goals: ProductivityGoal[]
   ): CalendarEvent[] {
-    const todayStr = 'Today';
-    const newEvents: CalendarEvent[] = [
-      {
-        id: `ai_evt_${Date.now()}_1`,
-        title: '🤖 AI Recommended: System Design & STAR Interview Practice',
-        company: 'Apple / Stripe Prep',
-        date: todayStr,
-        time: '09:00 AM',
-        durationMinutes: 60,
-        type: 'mock_interview',
-        priority: 'high',
-        colorTag: '#0052ff',
-        description: 'Focus on distributed queue partitioning and rate limiting interview scenarios.',
-        meetingLink: 'https://hireflow.ai/practice/system-design',
-        notes: 'Review STAR framework responses.',
-        reminderMinutesBefore: 15
-      },
-      {
-        id: `ai_evt_${Date.now()}_2`,
-        title: '🤖 AI Recommended: ATS Resume Bullet Point Customization',
-        date: todayStr,
-        time: '10:30 AM',
-        durationMinutes: 45,
-        type: 'resume_review',
-        priority: 'high',
-        colorTag: '#571bc1',
-        description: 'Tailor top 2 experience bullet points with quantitative impact metrics.',
-        notes: 'Target keywords: Kafka, Distributed Systems, Go',
-        reminderMinutesBefore: 10
-      },
-      {
-        id: `ai_evt_${Date.now()}_3`,
-        title: '🤖 AI Recommended: Focus Mode Coding & LeetCode Hard Session',
-        date: todayStr,
-        time: '02:00 PM',
-        durationMinutes: 60,
-        type: 'coding_practice',
-        priority: 'medium',
-        colorTag: '#10b981',
-        description: 'Solve 2 Dynamic Programming problems to reach weekly goal of 20 problems.',
-        reminderMinutesBefore: 15
-      },
-      {
-        id: `ai_evt_${Date.now()}_4`,
-        title: '🤖 AI Recommended: Apply to 3 High-Match Senior Full Stack Roles',
-        date: todayStr,
-        time: '04:00 PM',
-        durationMinutes: 45,
-        type: 'deadline',
-        priority: 'medium',
-        colorTag: '#f59e0b',
-        description: 'Submit applications to Stripe, Apple, and Figma via AI One-Click Tailor.',
-        reminderMinutesBefore: 10
-      }
-    ];
-
-    return newEvents;
+    return [];
   }
 }

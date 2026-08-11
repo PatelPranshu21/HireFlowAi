@@ -60,13 +60,20 @@ export class UserService {
         this.setAuthToken(json.token);
       }
 
+      const rawName = `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || data.name;
+      const accountProfile = {
+        ...(json.user.profile || {}),
+        name: (json.user.profile?.name && json.user.profile.name !== 'Candidate') ? json.user.profile.name : rawName,
+        hasCompletedOnboarding: Boolean(json.user.onboardingCompleted)
+      };
+
       const account: StoredUserAccount = {
         id: json.user.id,
-        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || data.name,
+        name: rawName,
         email: json.user.email,
         createdAt: new Date().toISOString(),
-        profile: json.user.profile,
-        onboardingCompleted: json.user.onboardingCompleted
+        profile: accountProfile,
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
 
       this.setActiveUserId(account.id);
@@ -76,7 +83,7 @@ export class UserService {
         success: true,
         user: account,
         token: json.token,
-        onboardingCompleted: json.user.onboardingCompleted
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
     } catch (err: any) {
       // Fallback local registration if server unreachable
@@ -106,13 +113,20 @@ export class UserService {
         this.setAuthToken(json.token);
       }
 
+      const rawName = `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.profile?.name || json.user.email;
+      const accountProfile = {
+        ...(json.user.profile || {}),
+        name: (json.user.profile?.name && json.user.profile.name !== 'Candidate') ? json.user.profile.name : rawName,
+        hasCompletedOnboarding: Boolean(json.user.onboardingCompleted)
+      };
+
       const account: StoredUserAccount = {
         id: json.user.id,
-        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.email,
+        name: rawName,
         email: json.user.email,
         createdAt: new Date().toISOString(),
-        profile: json.user.profile,
-        onboardingCompleted: json.user.onboardingCompleted
+        profile: accountProfile,
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
 
       this.setActiveUserId(account.id);
@@ -122,7 +136,7 @@ export class UserService {
         success: true,
         user: account,
         token: json.token,
-        onboardingCompleted: json.user.onboardingCompleted
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
     } catch (err: any) {
       return this.authenticateUser(data);
@@ -149,13 +163,20 @@ export class UserService {
         return { success: false, error: json.error || 'Failed to authenticate user' };
       }
 
+      const rawName = `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.profile?.name || json.user.email;
+      const accountProfile = {
+        ...(json.user.profile || {}),
+        name: (json.user.profile?.name && json.user.profile.name !== 'Candidate') ? json.user.profile.name : rawName,
+        hasCompletedOnboarding: Boolean(json.user.onboardingCompleted)
+      };
+
       const account: StoredUserAccount = {
         id: json.user.id,
-        name: `${json.user.firstName || ''} ${json.user.lastName || ''}`.trim() || json.user.email,
+        name: rawName,
         email: json.user.email,
         createdAt: new Date().toISOString(),
-        profile: json.user.profile,
-        onboardingCompleted: json.user.onboardingCompleted
+        profile: accountProfile,
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
 
       this.setActiveUserId(account.id);
@@ -164,7 +185,7 @@ export class UserService {
       return {
         success: true,
         user: account,
-        onboardingCompleted: json.user.onboardingCompleted
+        onboardingCompleted: Boolean(json.user.onboardingCompleted)
       };
     } catch (err: any) {
       // Fallback to active user in localStorage
@@ -468,24 +489,10 @@ export class UserService {
     error?: string;
   } {
     const cleanEmail = data.email.trim().toLowerCase();
-    let account = this.findUserByEmail(cleanEmail);
+    const account = this.findUserByEmail(cleanEmail);
 
     if (!account) {
-      const derivedName = cleanEmail.split('@')[0]
-        .split(/[._-]/)
-        .map(p => p.charAt(0).toUpperCase() + p.slice(1))
-        .join(' ');
-
-      const reg = this.registerUser({
-        name: derivedName || 'User',
-        email: cleanEmail,
-        password: data.password || 'password123'
-      });
-
-      if (!reg.success || !reg.user) {
-        return { success: false, error: reg.error || 'Authentication failed' };
-      }
-      account = reg.user;
+      return { success: false, error: 'Invalid email or password.' };
     }
 
     this.setActiveUserId(account.id);

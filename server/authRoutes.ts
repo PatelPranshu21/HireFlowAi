@@ -128,6 +128,43 @@ export function verifyAuthHeader(req: Request): string | null {
   }
 }
 
+// Helper to build standardized auth user response
+function formatAuthUserResponse(record: DbUserRecord) {
+  const firstName = (record.first_name || '').trim();
+  const lastName = (record.last_name || '').trim();
+  let fullName = `${firstName} ${lastName}`.trim();
+
+  const profile = { ...(record.profile_data || {}) };
+  profile.id = record.id;
+  profile.email = record.email;
+
+  if (!fullName && profile.name && profile.name !== 'Candidate') {
+    fullName = profile.name.trim();
+  } else if (!fullName) {
+    fullName = record.email.split('@')[0];
+  }
+
+  if (!profile.name || profile.name === 'Candidate' || profile.name.trim().length === 0) {
+    profile.name = fullName;
+  }
+
+  const derivedFirstName = firstName || profile.name.split(' ')[0] || 'User';
+  const derivedLastName = lastName || profile.name.split(' ').slice(1).join(' ') || '';
+
+  const onboardingCompleted = Boolean(record.onboarding_completed);
+  profile.hasCompletedOnboarding = onboardingCompleted;
+
+  return {
+    id: record.id,
+    email: record.email,
+    firstName: derivedFirstName,
+    lastName: derivedLastName,
+    authProvider: record.auth_provider,
+    onboardingCompleted,
+    profile
+  };
+}
+
 // ------------------- AUTH ENDPOINTS -------------------
 
 // 1. Email Signup / Register
@@ -151,7 +188,10 @@ const handleSignup = async (req: Request, res: Response) => {
     }
 
     if (existingUser) {
-      return res.status(400).json({ error: 'An account with this email address already exists. Please log in.' });
+      return res.status(409).json({
+        error: 'account_exists',
+        message: 'An account with this email already exists. Please log in instead.'
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -200,19 +240,13 @@ const handleSignup = async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
+    const userPayload = formatAuthUserResponse(createdUserRecord!);
+
     return res.json({
       success: true,
       token,
       onboarding_completed: false,
-      user: {
-        id: createdUserRecord!.id,
-        email: createdUserRecord!.email,
-        firstName: createdUserRecord!.first_name,
-        lastName: createdUserRecord!.last_name,
-        authProvider: createdUserRecord!.auth_provider,
-        onboardingCompleted: false,
-        profile: createdUserRecord!.profile_data
-      }
+      user: userPayload
     });
   } catch (err: any) {
     console.error('Error in /api/auth/signup:', err);
@@ -256,22 +290,13 @@ router.post('/login', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    const profile = userRecord.profile_data || {};
-    profile.hasCompletedOnboarding = userRecord.onboarding_completed;
+    const userPayload = formatAuthUserResponse(userRecord);
 
     return res.json({
       success: true,
       token,
-      onboarding_completed: userRecord.onboarding_completed,
-      user: {
-        id: userRecord.id,
-        email: userRecord.email,
-        firstName: userRecord.first_name,
-        lastName: userRecord.last_name,
-        authProvider: userRecord.auth_provider,
-        onboardingCompleted: userRecord.onboarding_completed,
-        profile
-      }
+      onboarding_completed: userPayload.onboardingCompleted,
+      user: userPayload
     });
   } catch (err: any) {
     console.error('Error in /api/auth/login:', err);
@@ -296,20 +321,11 @@ router.get('/me', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const profile = userRecord.profile_data || {};
-    profile.hasCompletedOnboarding = userRecord.onboarding_completed;
+    const userPayload = formatAuthUserResponse(userRecord);
 
     return res.json({
       success: true,
-      user: {
-        id: userRecord.id,
-        email: userRecord.email,
-        firstName: userRecord.first_name,
-        lastName: userRecord.last_name,
-        authProvider: userRecord.auth_provider,
-        onboardingCompleted: userRecord.onboarding_completed,
-        profile
-      }
+      user: userPayload
     });
   } catch (err: any) {
     console.error('Error in /api/auth/me:', err);
@@ -342,12 +358,19 @@ router.post('/onboarding', async (req: Request, res: Response) => {
       hasCompletedOnboarding: true
     };
 
+    const newFirstName = onboardingUpdates.name
+      ? onboardingUpdates.name.trim().split(' ')[0]
+      : (userRecord.first_name || undefined);
+    const newLastName = onboardingUpdates.name
+      ? onboardingUpdates.name.trim().split(' ').slice(1).join(' ')
+      : (userRecord.last_name || undefined);
+
     let updatedRecord: DbUserRecord | null = null;
     if (isDbConnected()) {
       updatedRecord = await dbUpdateUserProfile(userId, updatedProfile, {
         onboarding_completed: true,
-        first_name: onboardingUpdates.name ? onboardingUpdates.name.split(' ')[0] : undefined,
-        last_name: onboardingUpdates.name ? onboardingUpdates.name.split(' ').slice(1).join(' ') : undefined
+        first_name: newFirstName,
+        last_name: newLastName
       });
     }
 
@@ -357,21 +380,21 @@ router.post('/onboarding', async (req: Request, res: Response) => {
       if (fb) {
         fb.onboarding_completed = true;
         fb.onboarding_completed_at = new Date().toISOString();
+        if (newFirstName) fb.first_name = newFirstName;
+        if (newLastName) fb.last_name = newLastName;
         fb.profile_data = updatedProfile;
         fb.updated_at = new Date().toISOString();
         updatedRecord = fb as any;
       }
     }
 
+    const finalRecord = updatedRecord || userRecord;
+    const userPayload = formatAuthUserResponse(finalRecord);
+
     return res.json({
       success: true,
       onboardingCompleted: true,
-      user: {
-        id: userId,
-        email: userRecord.email,
-        onboardingCompleted: true,
-        profile: updatedProfile
-      }
+      user: userPayload
     });
   } catch (err: any) {
     console.error('Error in /api/auth/onboarding:', err);

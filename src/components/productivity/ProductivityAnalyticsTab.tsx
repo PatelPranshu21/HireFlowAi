@@ -3,21 +3,19 @@ import { BarChart3, TrendingUp, Clock, CheckCircle2, Award, Zap, Sparkles } from
 import { useEcosystem } from '../../context/EcosystemContext';
 
 export const ProductivityAnalyticsTab: React.FC = () => {
-  const { streaks, prodTasks, prodGoals } = useEcosystem();
+  const { streaks, prodTasks, prodGoals, focusSessions } = useEcosystem();
 
   const completedTasks = prodTasks.filter(t => t.completed).length;
   const totalTasks = prodTasks.length;
-  const taskCompletionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 100;
+  const taskCompletionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  const weeklyData = [
-    { day: 'Mon', focusHours: 4.2, tasksDone: 5 },
-    { day: 'Tue', focusHours: 5.5, tasksDone: 6 },
-    { day: 'Wed', focusHours: 3.8, tasksDone: 4 },
-    { day: 'Thu', focusHours: 6.0, tasksDone: 8 },
-    { day: 'Fri', focusHours: 4.5, tasksDone: 5 },
-    { day: 'Sat', focusHours: 5.0, tasksDone: 4 },
-    { day: 'Sun', focusHours: 2.2, tasksDone: 2 }
-  ];
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weeklyData = daysOfWeek.map(day => {
+    // If sessions exist, sum duration, otherwise 0
+    const daySessions = focusSessions.filter(s => s.timestamp.includes(day));
+    const hours = daySessions.reduce((acc, s) => acc + (s.durationMinutes / 60), 0);
+    return { day, focusHours: parseFloat(hours.toFixed(1)), tasksDone: 0 };
+  });
 
   return (
     <div className="space-y-6">
@@ -50,7 +48,9 @@ export const ProductivityAnalyticsTab: React.FC = () => {
             <Clock className="w-4 h-4 text-[#0052ff]" /> Total Focus Time
           </span>
           <div className="text-2xl font-bold font-geist text-white">{streaks.totalFocusHours} Hours</div>
-          <span className="text-[11px] font-mono text-emerald-400">+18% this week</span>
+          <span className="text-[11px] font-mono text-[#c3c5d9]">
+            {streaks.totalFocusHours > 0 ? 'Active tracking' : 'No focus sessions yet'}
+          </span>
         </div>
 
         <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-5 space-y-2">
@@ -58,7 +58,9 @@ export const ProductivityAnalyticsTab: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Tasks Completed
           </span>
           <div className="text-2xl font-bold font-geist text-white">{completedTasks} Tasks</div>
-          <span className="text-[11px] font-mono text-emerald-400">{taskCompletionRate}% completion rate</span>
+          <span className="text-[11px] font-mono text-emerald-400">
+            {totalTasks > 0 ? `${taskCompletionRate}% completion rate` : 'No tasks created yet'}
+          </span>
         </div>
 
         <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-5 space-y-2">
@@ -66,7 +68,9 @@ export const ProductivityAnalyticsTab: React.FC = () => {
             <Zap className="w-4 h-4 text-amber-400" /> Learning Streak
           </span>
           <div className="text-2xl font-bold font-geist text-white">{streaks.learningStreakDays} Days</div>
-          <span className="text-[11px] font-mono text-amber-400">Personal Best Streak!</span>
+          <span className="text-[11px] font-mono text-amber-400">
+            {streaks.learningStreakDays > 0 ? 'Active Streak!' : 'No active streak'}
+          </span>
         </div>
 
         <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-5 space-y-2">
@@ -76,7 +80,9 @@ export const ProductivityAnalyticsTab: React.FC = () => {
           <div className="text-2xl font-bold font-geist text-white">
             {prodGoals.filter(g => g.completed).length} / {prodGoals.length}
           </div>
-          <span className="text-[11px] font-mono text-[#4cd7f6]">Weekly Roadmap On Track</span>
+          <span className="text-[11px] font-mono text-[#4cd7f6]">
+            {prodGoals.length > 0 ? 'Active Roadmap' : 'No goals created yet'}
+          </span>
         </div>
       </div>
 
@@ -89,14 +95,18 @@ export const ProductivityAnalyticsTab: React.FC = () => {
 
         <div className="h-48 flex items-end justify-between gap-3 pt-6 border-b border-[#434656]/20 pb-2">
           {weeklyData.map((item, idx) => {
-            const barHeight = Math.round((item.focusHours / 8) * 100);
+            const barHeight = item.focusHours > 0 ? Math.min(100, Math.round((item.focusHours / 8) * 100)) : 4;
             return (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <span className="text-[10px] font-mono text-[#c3c5d9] opacity-0 group-hover:opacity-100 transition-opacity">
                   {item.focusHours}h
                 </span>
                 <div
-                  className="w-full bg-gradient-to-t from-[#0052ff] to-[#4cd7f6] rounded-t-lg transition-all duration-300 group-hover:opacity-90"
+                  className={`w-full rounded-t-lg transition-all duration-300 ${
+                    item.focusHours > 0
+                      ? 'bg-gradient-to-t from-[#0052ff] to-[#4cd7f6] group-hover:opacity-90'
+                      : 'bg-[#252836]'
+                  }`}
                   style={{ height: `${barHeight}%` }}
                 />
                 <span className="text-xs font-mono text-[#c3c5d9] mt-2">{item.day}</span>
@@ -112,7 +122,9 @@ export const ProductivityAnalyticsTab: React.FC = () => {
           <Sparkles className="w-4 h-4" /> AI Productivity Coach Insight
         </div>
         <p className="text-sm font-geist text-white leading-relaxed">
-          "Your highest focus productivity occurs between 09:00 AM and 11:30 AM on Thursdays and Tuesdays. Scheduling your most demanding System Design STAR practice during morning focus windows increases your practice retention by +32%."
+          {streaks.totalFocusHours > 0
+            ? `"Your focus sessions are active. Continue tracking study blocks and STAR preparation to receive tailored timing recommendations."`
+            : `"No focus sessions recorded yet. Start a focus session to generate personalized productivity coach insights based on your study habits."`}
         </p>
       </div>
     </div>

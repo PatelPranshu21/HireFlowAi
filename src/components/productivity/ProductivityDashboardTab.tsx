@@ -49,7 +49,8 @@ export const ProductivityDashboardTab: React.FC<ProductivityDashboardTabProps> =
               AI Productivity Engine
             </span>
             <span className="text-xs font-mono text-emerald-400 font-bold flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> {streaks.learningStreakDays} Day Streak!
+              <Flame className={`w-3.5 h-3.5 ${streaks.learningStreakDays > 0 ? 'fill-amber-400 text-amber-400' : 'text-[#c3c5d9]'}`} /> 
+              {streaks.learningStreakDays > 0 ? `${streaks.learningStreakDays} Day Streak!` : 'No active streak'}
             </span>
           </div>
 
@@ -82,14 +83,22 @@ export const ProductivityDashboardTab: React.FC<ProductivityDashboardTabProps> =
         <div className="grid grid-cols-2 gap-3 z-10">
           <div className="bg-[#13151f]/80 p-4 rounded-2xl border border-[#434656]/30 text-center w-36">
             <span className="text-[10px] font-mono text-[#c3c5d9] uppercase block">Productivity</span>
-            <span className="text-2xl font-bold font-geist text-emerald-400">{streaks.productivityScore}%</span>
-            <span className="text-[10px] font-mono text-[#c3c5d9]">Top 5% Performer</span>
+            <span className="text-2xl font-bold font-geist text-emerald-400">
+              {streaks.productivityScore > 0 ? `${streaks.productivityScore}%` : '0%'}
+            </span>
+            <span className="text-[10px] font-mono text-[#c3c5d9] block mt-0.5">
+              {streaks.productivityScore > 0 ? 'Top Performer' : 'No productivity data yet'}
+            </span>
           </div>
 
           <div className="bg-[#13151f]/80 p-4 rounded-2xl border border-[#434656]/30 text-center w-36">
             <span className="text-[10px] font-mono text-[#c3c5d9] uppercase block">Focus Time</span>
-            <span className="text-2xl font-bold font-geist text-[#4cd7f6]">{streaks.totalFocusHours}h</span>
-            <span className="text-[10px] font-mono text-[#c3c5d9]">38.5h Total Study</span>
+            <span className="text-2xl font-bold font-geist text-[#4cd7f6]">
+              {streaks.totalFocusHours > 0 ? `${streaks.totalFocusHours}h` : '0h'}
+            </span>
+            <span className="text-[10px] font-mono text-[#c3c5d9] block mt-0.5">
+              {streaks.totalFocusHours > 0 ? `${streaks.totalStudyHours}h Total Study` : 'No focus sessions yet'}
+            </span>
           </div>
         </div>
       </div>
@@ -168,33 +177,37 @@ export const ProductivityDashboardTab: React.FC<ProductivityDashboardTabProps> =
           </div>
 
           <div className="space-y-3">
-            {pendingTasks.map(task => (
-              <div
-                key={task.id}
-                className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 flex items-center justify-between gap-3"
-              >
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => toggleProdTask(task.id)}
-                    className="p-1 text-[#434656] hover:text-white cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                  </button>
-                  <div>
-                    <h4 className="text-xs font-bold font-geist text-white">{task.title}</h4>
-                    <span className="text-[10px] font-mono text-[#c3c5d9]">
-                      {task.category} • Due: {task.dueDate}
-                    </span>
+            {pendingTasks.length === 0 ? (
+              <p className="text-xs text-[#c3c5d9] font-mono py-6 text-center">No priority tasks yet.</p>
+            ) : (
+              pendingTasks.map(task => (
+                <div
+                  key={task.id}
+                  className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => toggleProdTask(task.id)}
+                      className="p-1 text-[#434656] hover:text-white cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                    <div>
+                      <h4 className="text-xs font-bold font-geist text-white">{task.title}</h4>
+                      <span className="text-[10px] font-mono text-[#c3c5d9]">
+                        {task.category} • Due: {task.dueDate}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
-                  task.priority === 'high' ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                }`}>
-                  {task.priority}
-                </span>
-              </div>
-            ))}
+                  <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
+                    task.priority === 'high' ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  }`}>
+                    {task.priority}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -216,20 +229,24 @@ export const ProductivityDashboardTab: React.FC<ProductivityDashboardTabProps> =
           </div>
 
           <div className="space-y-3">
-            {activeGoals.map(goal => {
-              const percent = Math.min(100, Math.round((goal.currentProgress / goal.targetProgress) * 100));
-              return (
-                <div key={goal.id} className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 space-y-2">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-white font-bold">{goal.title}</span>
-                    <span className="text-[#3b82f6]">{goal.currentProgress}/{goal.targetProgress} {goal.unit} ({percent}%)</span>
+            {activeGoals.length === 0 ? (
+              <p className="text-xs text-[#c3c5d9] font-mono py-6 text-center">No active goals yet.</p>
+            ) : (
+              activeGoals.map(goal => {
+                const percent = Math.min(100, Math.round((goal.currentProgress / goal.targetProgress) * 100));
+                return (
+                  <div key={goal.id} className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 space-y-2">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-white font-bold">{goal.title}</span>
+                      <span className="text-[#3b82f6]">{goal.currentProgress}/{goal.targetProgress} {goal.unit} ({percent}%)</span>
+                    </div>
+                    <div className="h-2 w-full bg-[#191b25] rounded-full overflow-hidden border border-[#434656]/20">
+                      <div className="h-full bg-[#3b82f6] transition-all" style={{ width: `${percent}%` }} />
+                    </div>
                   </div>
-                  <div className="h-2 w-full bg-[#191b25] rounded-full overflow-hidden border border-[#434656]/20">
-                    <div className="h-full bg-[#3b82f6] transition-all" style={{ width: `${percent}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -248,13 +265,17 @@ export const ProductivityDashboardTab: React.FC<ProductivityDashboardTabProps> =
           </div>
 
           <div className="space-y-3">
-            {pinnedNotes.map(note => (
-              <div key={note.id} className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 space-y-1">
-                <span className="text-[10px] font-mono text-[#f59e0b] uppercase font-bold">{note.category}</span>
-                <h4 className="text-xs font-bold font-geist text-white">{note.title}</h4>
-                <p className="text-[11px] text-[#c3c5d9] font-mono line-clamp-2">{note.content}</p>
-              </div>
-            ))}
+            {pinnedNotes.length === 0 ? (
+              <p className="text-xs text-[#c3c5d9] font-mono py-6 text-center">No pinned notes yet.</p>
+            ) : (
+              pinnedNotes.map(note => (
+                <div key={note.id} className="p-3.5 bg-[#13151f] rounded-xl border border-[#434656]/30 space-y-1">
+                  <span className="text-[10px] font-mono text-[#f59e0b] uppercase font-bold">{note.category}</span>
+                  <h4 className="text-xs font-bold font-geist text-white">{note.title}</h4>
+                  <p className="text-[11px] text-[#c3c5d9] font-mono line-clamp-2">{note.content}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

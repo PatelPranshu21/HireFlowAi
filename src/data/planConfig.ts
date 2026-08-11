@@ -9,6 +9,7 @@ export interface PlanEntitlements {
   priceYearly: number;
   description: string;
   durationDays?: number;
+  popular?: boolean;
   limits: {
     atsAnalyses: number; // -1 for unlimited
     coverLetterGenerations: number;
@@ -73,6 +74,7 @@ export const PLANS: Record<PlanName, PlanEntitlements> = {
     priceMonthly: 19,
     priceYearly: 15,
     description: 'Complete career acceleration suite for tech professionals targeting top roles.',
+    popular: true,
     limits: {
       atsAnalyses: -1,
       coverLetterGenerations: -1,

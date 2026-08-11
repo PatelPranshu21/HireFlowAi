@@ -222,8 +222,25 @@ export async function dbUpdateUserProfile(
       ? existing.onboarding_completed_at || now
       : existing.onboarding_completed_at;
 
-    const firstName = additionalUpdates?.first_name || existing.first_name;
-    const lastName = additionalUpdates?.last_name || existing.last_name;
+    let extractedFirstName = additionalUpdates?.first_name;
+    let extractedLastName = additionalUpdates?.last_name;
+
+    if (!extractedFirstName && profileData?.name && profileData.name !== 'Candidate') {
+      const parts = profileData.name.trim().split(' ');
+      extractedFirstName = parts[0];
+      if (parts.length > 1) {
+        extractedLastName = parts.slice(1).join(' ');
+      }
+    }
+
+    const firstName = extractedFirstName || existing.first_name;
+    const lastName = extractedLastName || existing.last_name;
+    const fullName = `${firstName || ''} ${lastName || ''}`.trim();
+
+    if (fullName) {
+      mergedProfile.name = fullName;
+    }
+    mergedProfile.hasCompletedOnboarding = onboardingCompleted;
     const authProvider = additionalUpdates?.auth_provider || existing.auth_provider;
     const providerId = additionalUpdates?.provider_id || existing.provider_id;
 

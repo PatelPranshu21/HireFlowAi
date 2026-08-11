@@ -313,7 +313,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
         ) : (
           <div>
             <div className="mb-6 text-center">
-              <h2 className="text-2xl font-bold font-geist text-white">Create your account</h2>
+              <h2 className="text-2xl font-bold font-geist text-white">Create Your Account</h2>
               <p className="text-sm text-white/50 mt-1">Join 2,000+ candidates landing top tech roles.</p>
             </div>
 
@@ -338,9 +338,24 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
             ) : (
               <div>
                 {signupError && (
-                  <div className="mb-4 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{signupError}</span>
+                  <div className="mb-4 p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-xs flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{signupError}</span>
+                    </div>
+                    {(signupError.toLowerCase().includes('exists') || signupError.toLowerCase().includes('log in')) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginEmail(signupEmail);
+                          onNavigate('login');
+                          setSignupError('');
+                        }}
+                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-medium shrink-0 cursor-pointer transition-colors"
+                      >
+                        Go to Login
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -486,7 +501,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
                   >
                     {isSignupLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    {isSignupLoading ? 'Creating Account...' : 'Get Started Free'}
+                    {isSignupLoading ? 'Creating Account...' : 'Create Account'}
                   </button>
                 </form>
 

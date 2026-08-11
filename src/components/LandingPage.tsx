@@ -49,7 +49,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
             Sign In
           </button>
           <button 
-            onClick={() => onNavigate('login')}
+            onClick={() => onNavigate('signup')}
             className="px-5 py-2 text-sm font-semibold bg-white text-black rounded-full hover:bg-white/90 transition-all shadow-lg shadow-white/5 cursor-pointer active:scale-95"
           >
             Get Started
@@ -83,7 +83,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
 
           <div className="flex flex-wrap items-center gap-4">
             <button 
-              onClick={() => onNavigate('login')}
+              onClick={() => onNavigate('signup')}
               className="px-8 py-4 bg-blue-600 rounded-xl font-semibold text-white shadow-xl shadow-blue-500/20 hover:bg-blue-500 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
             >
               Upload Resume — Free
@@ -257,62 +257,103 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
             <p className="text-white/50 text-base">No credit card required to analyze your first resume.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+            {/* 3-Day Free Trial */}
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2 font-geist">Free Plan</h3>
-                <p className="text-xs text-white/50 mb-6">Essential tools for job seekers.</p>
-                <span className="text-4xl font-bold text-white font-geist">$0</span>
-                <ul className="mt-6 space-y-3 text-xs text-white/70">
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 3 ATS Resume Audits</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Basic Keyword Missing Alerts</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 10 Kanban Tracker Slots</li>
+                <span className="text-[10px] font-mono uppercase font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 rounded-full inline-block mb-3">Risk Free</span>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">3-Day Free Trial</h3>
+                <p className="text-xs text-white/50 mb-4 min-h-[32px]">Full access to ATS scoring and AI matchers for 72 hours.</p>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-bold text-white font-geist">$0</span>
+                  <span className="text-xs font-mono text-white/40">for 3 days</span>
+                </div>
+                <ul className="space-y-2.5 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 3 ATS Resume Audits</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 3 AI Cover Letter Studio</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 5 Job Match & Gap Audits</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Data preserved after expiry</li>
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('login')}
-                className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer transition-colors"
               >
-                Log In Free
+                Start 3-Day Trial
               </button>
             </div>
 
-            <div className="bg-white/5 border border-blue-500 rounded-3xl p-8 flex flex-col justify-between relative ai-gradient-border">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase">Most Popular</span>
+            {/* Basic Plan */}
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2 font-geist">Gold Tier</h3>
-                <p className="text-xs text-white/50 mb-6">For active job seekers looking for speed.</p>
-                <span className="text-4xl font-bold text-white font-geist">$19 <span className="text-xs text-white/50 font-normal">/mo</span></span>
-                <ul className="mt-6 space-y-3 text-xs text-white/70">
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Unlimited Resume Audits</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 1-Click Bullet AI Rewriter</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> AI Cover Letter Studio</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> 20 AI Mock Interviews / mo</li>
+                <span className="text-[10px] font-mono uppercase font-bold text-white/50 bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full inline-block mb-3">Starter</span>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">Basic Plan</h3>
+                <p className="text-xs text-white/50 mb-4 min-h-[32px]">Essential tools for active job seekers sending weekly applications.</p>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-bold text-white font-geist">$9</span>
+                  <span className="text-xs font-mono text-white/40">/ mo</span>
+                </div>
+                <ul className="space-y-2.5 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 10 ATS Resume Audits / mo</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 10 AI Cover Letters / mo</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 1-Click AI Bullet Rewriter</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Unlimited Job Matching</li>
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('login')}
-                className="w-full mt-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold cursor-pointer shadow-lg shadow-blue-500/20"
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer transition-colors"
               >
-                Get Gold Access
+                Choose Basic
               </button>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
+            {/* Pro Plan */}
+            <div className="bg-white/5 border border-blue-500 rounded-3xl p-6 flex flex-col justify-between relative ai-gradient-border">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-widest shadow-lg">Most Popular</span>
               <div>
+                <span className="text-[10px] font-mono uppercase font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 rounded-full inline-block mb-3">Popular</span>
+                <h3 className="text-xl font-bold text-white mb-2 font-geist">Pro Plan</h3>
+                <p className="text-xs text-white/50 mb-4 min-h-[32px]">Complete career acceleration suite for tech professionals targeting top roles.</p>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-bold text-white font-geist">$19</span>
+                  <span className="text-xs font-mono text-white/40">/ mo</span>
+                </div>
+                <ul className="space-y-2.5 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Unlimited ATS Resume Audits</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Unlimited Cover Letter Studio</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> 30 AI Mock Interviews / mo</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> STAR Framework Scoring</li>
+                </ul>
+              </div>
+              <button 
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold cursor-pointer shadow-lg shadow-blue-500/20 transition-all"
+              >
+                Get Pro Access
+              </button>
+            </div>
+
+            {/* Premium Plan */}
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-mono uppercase font-bold text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2.5 py-0.5 rounded-full inline-block mb-3">Executive</span>
                 <h3 className="text-xl font-bold text-white mb-2 font-geist">Premium Plan</h3>
-                <p className="text-xs text-white/50 mb-6">Complete career acceleration suite.</p>
-                <span className="text-4xl font-bold text-white font-geist">$39 <span className="text-xs text-white/50 font-normal">/mo</span></span>
-                <ul className="mt-6 space-y-3 text-xs text-white/70">
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Everything in Gold Tier</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Unlimited AI Mock Interviews</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> LinkedIn Headline & Strategy</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-400" /> Salary Counteroffer Coach</li>
+                <p className="text-xs text-white/50 mb-4 min-h-[32px]">Maximum power with 1-on-1 AI Career Coach & live negotiation guidance.</p>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-3xl font-bold text-white font-geist">$39</span>
+                  <span className="text-xs font-mono text-white/40">/ mo</span>
+                </div>
+                <ul className="space-y-2.5 text-xs text-white/70">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Everything in Pro Plan</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Unlimited AI Mock Interviews</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> LinkedIn Headline & Strategy</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Salary Negotiation Coach</li>
                 </ul>
               </div>
               <button 
-                onClick={() => onNavigate('login')}
-                className="w-full mt-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer"
+                onClick={() => onNavigate('signup')}
+                className="w-full mt-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-bold cursor-pointer transition-colors"
               >
                 Start Premium
               </button>
@@ -366,7 +407,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartForFree, onNavi
           <p className="text-white/40 text-xs">Simulated technical prep with Gemini.</p>
         </div>
         <div 
-          onClick={() => onNavigate('login')}
+          onClick={() => onNavigate('signup')}
           className="p-8 bg-blue-600 hover:bg-blue-500 transition-colors flex flex-col justify-center cursor-pointer"
         >
           <p className="text-white/80 text-[10px] font-bold uppercase tracking-widest">Available Today</p>

@@ -76,9 +76,30 @@ function MainAppContent() {
 
   // Auth state
   const { state: authState, login, logout } = useAuth();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(authState.isAuthenticated);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setIsAuthenticated(authState.isAuthenticated);
+  }, [authState.isAuthenticated]);
+
+  // Route guard for onboarding state
+  useEffect(() => {
+    if (authState.isAuthenticated && profile) {
+      if (profile.hasCompletedOnboarding) {
+        if (currentTab === 'onboarding') {
+          setCurrentTab('dashboard');
+          window.location.hash = 'dashboard';
+        }
+      } else {
+        if (['dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 'settings', 'admin', 'support', 'profile', 'billing'].includes(currentTab)) {
+          setCurrentTab('onboarding');
+          window.location.hash = 'onboarding';
+        }
+      }
+    }
+  }, [authState.isAuthenticated, profile?.hasCompletedOnboarding, currentTab]);
 
   // Subscription Checkout State
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<{
@@ -193,13 +214,14 @@ function MainAppContent() {
     }
     
     if (isNewAccount) {
-      handleNavigate('pricing');
+      handleNavigate('onboarding');
     } else {
-      updateProfileDetails({
-        hasCompletedOnboarding: true,
-        hasSelectedPlan: true
-      });
-      handleNavigate('dashboard');
+      const completed = userProfile ? Boolean(userProfile.hasCompletedOnboarding) : Boolean(profile.hasCompletedOnboarding);
+      if (completed) {
+        handleNavigate('dashboard');
+      } else {
+        handleNavigate('onboarding');
+      }
     }
   };
 
