@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { initDb } from "./src/db/postgres";
+import { initDb, dbSaveAtsReport, dbSaveInterviewSession } from "./src/db/postgres";
 import authRoutes from "./server/authRoutes";
 import { pool } from "./db";
 import { PLANS, PlanName, normalizeProfileSubscription } from "./src/data/planConfig";
@@ -218,6 +218,18 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
     });
 
     const parsed = JSON.parse(response.text || "{}");
+    if (req.userId && req.userId !== 'usr_guest') {
+      await dbSaveAtsReport(req.userId, {
+        target_role: targetRole || "Software Engineer",
+        overall_score: parsed.overallScore || 0,
+        formatting_score: parsed.formattingScore || 0,
+        summary: parsed.summary || "",
+        keywords: parsed.keywords || [],
+        impact_points: parsed.impactPoints || [],
+        grammar_issues: parsed.grammarIssues || [],
+        analysis_data: parsed
+      });
+    }
     await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
@@ -601,6 +613,19 @@ app.post("/api/ai/interview-feedback", enforceFeatureEntitlement('mockInterviews
     });
 
     const parsed = JSON.parse(response.text || "{}");
+    if (req.userId && req.userId !== 'usr_guest') {
+      await dbSaveInterviewSession(req.userId, {
+        topic: role || 'Technical Interview',
+        role: role || 'Software Engineer',
+        score: parsed.score || 0,
+        question: question || '',
+        answer: answer || '',
+        star_breakdown: parsed.starBreakdown || {},
+        strengths: parsed.strengths || [],
+        areas_to_improve: parsed.areasToImprove || [],
+        polished_answer: parsed.polishedAnswer || ''
+      });
+    }
     await recordFeatureUsage(req.userId, req.userProfile, 'mockInterviews', req.guestKey);
     res.json(parsed);
   } catch (err: any) {

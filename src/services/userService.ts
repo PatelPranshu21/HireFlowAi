@@ -290,6 +290,155 @@ export class UserService {
     this.clearActiveSession();
   }
 
+  public static async fetchUserDataApi(): Promise<any> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/data', { headers });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        return json.data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching user data API:', err);
+      return null;
+    }
+  }
+
+  public static async uploadResumeApi(payload: {
+    fileName: string;
+    fileText: string;
+    parsedData?: any;
+    score?: number;
+    template?: string;
+  }): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/resume', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error uploading resume API:', err);
+      return false;
+    }
+  }
+
+  public static async saveCalendarEventApi(event: any): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/calendar', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(event)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error saving calendar event API:', err);
+      return false;
+    }
+  }
+
+  public static async deleteCalendarEventApi(id: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/auth/calendar/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error deleting calendar event API:', err);
+      return false;
+    }
+  }
+
+  public static async saveJobApplicationApi(app: any): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/job-application', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(app)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error saving job application API:', err);
+      return false;
+    }
+  }
+
+  public static async saveSavedJobApi(jobId: string, action: 'add' | 'remove' = 'add'): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/saved-job', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ jobId, action })
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error updating saved job API:', err);
+      return false;
+    }
+  }
+
+  public static async saveInterviewSessionApi(session: any): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/interview-session', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(session)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error saving interview session API:', err);
+      return false;
+    }
+  }
+
+  public static async saveProductivityDataApi(key: string, value: any): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/productivity', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ key, value })
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error saving productivity data API:', err);
+      return false;
+    }
+  }
+
   // --- LOCALSTORAGE CACHE / FALLBACK HELPERS ---
 
   private static getUsersMap(): Record<string, StoredUserAccount> {

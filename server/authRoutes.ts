@@ -9,7 +9,26 @@ import {
   dbCreateUser,
   dbUpdateUserProfile,
   isDbConnected,
-  DbUserRecord
+  DbUserRecord,
+  dbSaveResume,
+  dbGetUserResumes,
+  dbSaveResumeVersion,
+  dbGetResumeVersions,
+  dbSaveAtsReport,
+  dbGetAtsReports,
+  dbSaveJobApplication,
+  dbGetUserJobApplications,
+  dbSaveSavedJob,
+  dbRemoveSavedJob,
+  dbGetUserSavedJobs,
+  dbSaveInterviewSession,
+  dbGetUserInterviewSessions,
+  dbSaveCalendarEvent,
+  dbDeleteCalendarEvent,
+  dbGetUserCalendarEvents,
+  dbSaveProductivityData,
+  dbGetProductivityData,
+  dbGetAllUserData
 } from '../src/db/postgres';
 
 const router = Router();
@@ -770,6 +789,207 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error in LinkedIn OAuth callback:', err);
     return res.redirect('/#login?error=' + encodeURIComponent('LinkedIn OAuth callback internal error'));
+  }
+});
+
+// ------------------- PERSISTENT DATA ENDPOINTS -------------------
+
+// 6. Get Complete Persistent User Data (/api/auth/data)
+router.get('/data', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const allData = await dbGetAllUserData(userId);
+    return res.json({
+      success: true,
+      data: allData
+    });
+  } catch (err: any) {
+    console.error('Error in GET /api/auth/data:', err);
+    return res.status(500).json({ error: 'Failed to fetch user data', details: err.message });
+  }
+});
+
+// 7. Save Resume & Version (/api/auth/resume)
+router.post('/resume', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { fileName, fileText, parsedData, score, template } = req.body;
+    if (!fileText && !fileName) {
+      return res.status(400).json({ error: 'fileName and fileText required' });
+    }
+
+    const savedResume = await dbSaveResume(userId, {
+      file_name: fileName || 'Resume.pdf',
+      resume_text: fileText || '',
+      parsed_data: parsedData,
+      ats_score: score || 85,
+      version_name: fileName || 'Master Resume'
+    });
+
+    const savedVersion = await dbSaveResumeVersion(userId, {
+      resume_id: savedResume?.id,
+      version_name: fileName || 'Master Resume',
+      resume_text: fileText || '',
+      parsed_data: parsedData,
+      score: score || 85,
+      template: template || 'modern_tech',
+      file_name: fileName || 'Resume.pdf',
+      uploaded_at: new Date().toISOString()
+    });
+
+    // Also update profile_data in users table
+    const userRecord = await dbFindUserById(userId);
+    if (userRecord) {
+      const existingProfile = userRecord.profile_data || {};
+      const existingVersions = existingProfile.resumeVersions || [];
+      const newVer = {
+        id: savedVersion?.id || `v_${Date.now()}`,
+        versionName: fileName || 'Master Resume',
+        fileName: fileName || 'Resume.pdf',
+        uploadedAt: 'Just now',
+        fileSize: '184 KB',
+        score: score || 85,
+        template: template || 'modern_tech',
+        parsedData: parsedData,
+        jobsMatchedCount: 16,
+        content: fileText
+      };
+      const updatedVersions = [newVer, ...existingVersions.filter((v: any) => v.id !== newVer.id)];
+      const updatedProfile = {
+        ...existingProfile,
+        resumeText: fileText,
+        resumeVersions: updatedVersions,
+        atsScore: score || existingProfile.atsScore || 85
+      };
+      await dbUpdateUserProfile(userId, updatedProfile);
+    }
+
+    return res.json({
+      success: true,
+      resume: savedResume,
+      version: savedVersion
+    });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/resume:', err);
+    return res.status(500).json({ error: 'Failed to save resume', details: err.message });
+  }
+});
+
+// 8. Calendar Event (/api/auth/calendar)
+router.post('/calendar', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const event = req.body;
+    const saved = await dbSaveCalendarEvent(userId, event);
+    return res.json({ success: true, event: saved });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/calendar:', err);
+    return res.status(500).json({ error: 'Failed to save calendar event', details: err.message });
+  }
+});
+
+router.delete('/calendar/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    await dbDeleteCalendarEvent(userId, id);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in DELETE /api/auth/calendar:', err);
+    return res.status(500).json({ error: 'Failed to delete calendar event', details: err.message });
+  }
+});
+
+// 9. Job Application (/api/auth/job-application)
+router.post('/job-application', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const app = req.body;
+    const saved = await dbSaveJobApplication(userId, app);
+    return res.json({ success: true, application: saved });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/job-application:', err);
+    return res.status(500).json({ error: 'Failed to save job application', details: err.message });
+  }
+});
+
+// 10. Saved Job (/api/auth/saved-job)
+router.post('/saved-job', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { jobId, action } = req.body;
+    if (action === 'remove') {
+      await dbRemoveSavedJob(userId, jobId);
+    } else {
+      await dbSaveSavedJob(userId, jobId);
+    }
+    const savedJobs = await dbGetUserSavedJobs(userId);
+    return res.json({ success: true, savedJobs });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/saved-job:', err);
+    return res.status(500).json({ error: 'Failed to update saved job', details: err.message });
+  }
+});
+
+// 11. Interview Session (/api/auth/interview-session)
+router.post('/interview-session', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const session = req.body;
+    const saved = await dbSaveInterviewSession(userId, session);
+    return res.json({ success: true, session: saved });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/interview-session:', err);
+    return res.status(500).json({ error: 'Failed to save interview session', details: err.message });
+  }
+});
+
+// 12. Productivity Data (/api/auth/productivity)
+router.post('/productivity', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { key, value } = req.body;
+    if (!key) {
+      return res.status(400).json({ error: 'key required' });
+    }
+
+    await dbSaveProductivityData(userId, key, value);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in POST /api/auth/productivity:', err);
+    return res.status(500).json({ error: 'Failed to save productivity data', details: err.message });
   }
 });
 

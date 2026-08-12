@@ -183,6 +183,77 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setProdSettings(ProductivityService.getSettings(currentUserId));
     setIntegrations(ProductivityService.getIntegrations(currentUserId));
 
+    // Fetch full persistent dataset from PostgreSQL
+    UserService.fetchUserDataApi().then(dbData => {
+      if (!dbData) return;
+
+      if (dbData.user && dbData.user.profile_data) {
+        const pData = dbData.user.profile_data;
+        if (dbData.resumes && dbData.resumes.length > 0) {
+          pData.resumeText = dbData.resumes[0].resume_text || pData.resumeText;
+        }
+        if (dbData.resumeVersions && dbData.resumeVersions.length > 0) {
+          pData.resumeVersions = dbData.resumeVersions.map((v: any) => ({
+            id: v.id,
+            versionName: v.version_name,
+            fileName: v.file_name || v.version_name,
+            uploadedAt: v.uploaded_at || 'Saved',
+            fileSize: v.file_size || '180 KB',
+            score: v.score || 85,
+            template: v.template || 'modern_tech',
+            parsedData: v.parsed_data || {},
+            jobsMatchedCount: v.jobs_matched_count || 16,
+            content: v.resume_text
+          }));
+        }
+        authUpdateProfile(pData);
+      }
+
+      if (dbData.calendarEvents && dbData.calendarEvents.length > 0) {
+        const mappedEvents: CalendarEvent[] = dbData.calendarEvents.map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          company: e.company || undefined,
+          jobId: e.job_id || undefined,
+          date: e.event_date,
+          time: e.event_time,
+          type: e.event_type as any,
+          description: e.description || '',
+          completed: Boolean(e.completed),
+          priority: e.priority as any,
+          colorTag: e.color_tag
+        }));
+        setCalendarEvents(mappedEvents);
+      }
+
+      if (dbData.jobApplications && dbData.jobApplications.length > 0) {
+        const mappedApps: ApplicationCard[] = dbData.jobApplications.map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          company: a.company,
+          logo: a.company_logo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(a.company)}`,
+          location: a.location || 'Remote',
+          salary: a.salary || '$120,000 - $160,000',
+          matchScore: a.match_score || 85,
+          status: a.status || 'applied',
+          stage: a.stage || 'Applied',
+          appliedDate: a.applied_date || 'Recently'
+        }));
+        setApplications(mappedApps);
+      }
+
+      if (dbData.productivity) {
+        const p = dbData.productivity;
+        if (p.prod_tasks) setProdTasks(p.prod_tasks);
+        if (p.prod_notes) setProdNotes(p.prod_notes);
+        if (p.prod_goals) setProdGoals(p.prod_goals);
+        if (p.prod_focus) setFocusSessions(p.prod_focus);
+        if (p.prod_streaks) setStreaks(p.prod_streaks);
+        if (p.prod_settings) setProdSettings(p.prod_settings);
+        if (p.prod_integrations) setIntegrations(p.prod_integrations);
+      }
+    });
+
     setCoachMessages([
       {
         id: `coach_init_${currentUserId}`,
@@ -217,31 +288,52 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   }, [notifications, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveTasks(prodTasks, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveTasks(prodTasks, currentUserId);
+      UserService.saveProductivityDataApi('prod_tasks', prodTasks);
+    }
   }, [prodTasks, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveNotes(prodNotes, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveNotes(prodNotes, currentUserId);
+      UserService.saveProductivityDataApi('prod_notes', prodNotes);
+    }
   }, [prodNotes, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveGoals(prodGoals, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveGoals(prodGoals, currentUserId);
+      UserService.saveProductivityDataApi('prod_goals', prodGoals);
+    }
   }, [prodGoals, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveFocusSessions(focusSessions, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveFocusSessions(focusSessions, currentUserId);
+      UserService.saveProductivityDataApi('prod_focus', focusSessions);
+    }
   }, [focusSessions, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveStreaks(streaks, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveStreaks(streaks, currentUserId);
+      UserService.saveProductivityDataApi('prod_streaks', streaks);
+    }
   }, [streaks, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveSettings(prodSettings, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveSettings(prodSettings, currentUserId);
+      UserService.saveProductivityDataApi('prod_settings', prodSettings);
+    }
   }, [prodSettings, currentUserId]);
 
   useEffect(() => {
-    if (currentUserId) ProductivityService.saveIntegrations(integrations, currentUserId);
+    if (currentUserId) {
+      ProductivityService.saveIntegrations(integrations, currentUserId);
+      UserService.saveProductivityDataApi('prod_integrations', integrations);
+    }
   }, [integrations, currentUserId]);
 
   const addNotification = (notif: { title: string; message: string; type?: 'info' | 'success' | 'warning' | 'alert' }) => {
@@ -267,6 +359,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
   // Workflow Handlers
   const uploadResume = (fileText: string, fileName: string) => {
+    UserService.uploadResumeApi({ fileName, fileText });
     const result = WorkflowEngine.handleResumeUpdated(
       profile,
       recommendations,
@@ -317,6 +410,18 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   };
 
   const applyToJob = (job: { id: string; title: string; company: string; companyLogo?: string; location?: string; salary?: string }) => {
+    UserService.saveJobApplicationApi({
+      job_id: job.id,
+      title: job.title,
+      company: job.company,
+      company_logo: job.companyLogo,
+      location: job.location,
+      salary: job.salary,
+      status: 'applied',
+      stage: 'Applied',
+      applied_date: new Date().toISOString().split('T')[0]
+    });
+
     const result = WorkflowEngine.handleJobApplied(
       profile,
       recommendations,
@@ -340,6 +445,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   };
 
   const saveJob = (jobId: string) => {
+    UserService.saveSavedJobApi(jobId, 'add');
     const job = recommendations.find(j => j.id === jobId);
     if (job) {
       AiMemoryService.recordJobInteraction('save', { title: job.title, company: job.company, tags: job.tags });
@@ -375,6 +481,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   };
 
   const completeInterviewSession = (topic: string, score: number) => {
+    UserService.saveInterviewSessionApi({ topic, score });
     setProfile(prev => {
       const metrics = prev.interviewMetrics || {
         mockScoreOverall: 80,
@@ -436,6 +543,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
   const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>) => {
     CalendarService.addEvent(event);
+    UserService.saveCalendarEventApi(event);
     setCalendarEvents(CalendarService.getEvents());
 
     // Generate notification for scheduled events
@@ -458,10 +566,12 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const updateCalendarEvent = (event: CalendarEvent) => {
     const updated = CalendarService.getEvents().map(e => e.id === event.id ? event : e);
     localStorage.setItem('hireflow_calendar_events_v1', JSON.stringify(updated));
+    UserService.saveCalendarEventApi(event);
     setCalendarEvents(updated);
   };
 
   const deleteCalendarEvent = (id: string) => {
+    UserService.deleteCalendarEventApi(id);
     const updated = CalendarService.getEvents().filter(e => e.id !== id);
     localStorage.setItem('hireflow_calendar_events_v1', JSON.stringify(updated));
     setCalendarEvents(updated);

@@ -40,6 +40,7 @@ export interface UserState {
   stats: UserStats;
   freeTrial: FreeTrialState;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 export interface AuthContextType {
@@ -62,64 +63,48 @@ export interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<UserState>(() => {
-    const activeUserId = UserService.getActiveUserId();
-    if (activeUserId) {
-      const userAccount = UserService.getUserById(activeUserId);
-      if (userAccount && userAccount.profile) {
-        const { profile: normProfile } = normalizeProfileSubscription(userAccount.profile);
-        const trialExpiryMs = normProfile.trialExpiryDate ? new Date(normProfile.trialExpiryDate).getTime() : 0;
-        const nowMs = Date.now();
-        const diffHours = trialExpiryMs > nowMs ? (trialExpiryMs - nowMs) / (1000 * 60 * 60) : 0;
-
-        return {
-          profile: normProfile,
-          resume: null,
-          stats: {
-            applicationsCount: normProfile.appliedJobIds?.length || 0,
-            interviewsCount: normProfile.interviewMetrics?.completedSessionsCount || 0,
-            codingSolvedCount: normProfile.interviewMetrics?.solvedCodingCount || 0,
-            resumeScansCount: normProfile.usageLimits?.atsAnalyses?.used || 0
-          },
-          freeTrial: {
-            isTrialActive: normProfile.subscriptionStatus === 'trialing',
-            trialStartedAt: normProfile.trialStartDate || null,
-            trialExpiryAt: normProfile.trialExpiryDate || null,
-            daysRemaining: Math.max(0, Math.ceil(diffHours / 24)),
-            isExpired: normProfile.subscriptionStatus === 'expired'
-          },
-          isAuthenticated: true
-        };
-      }
-    }
-
-    // Default unauthenticated state
-    return {
-      profile: null,
-      resume: null,
-      stats: {
-        applicationsCount: 0,
-        interviewsCount: 0,
-        codingSolvedCount: 0,
-        resumeScansCount: 0
-      },
-      freeTrial: {
-        isTrialActive: false,
-        trialStartedAt: null,
-        trialExpiryAt: null,
-        daysRemaining: 3,
-        isExpired: false
-      },
-      isAuthenticated: false
-    };
+  const [state, setState] = useState<UserState>({
+    profile: null,
+    resume: null,
+    stats: {
+      applicationsCount: 0,
+      interviewsCount: 0,
+      codingSolvedCount: 0,
+      resumeScansCount: 0
+    },
+    freeTrial: {
+      isTrialActive: false,
+      trialStartedAt: null,
+      trialExpiryAt: null,
+      daysRemaining: 3,
+      isExpired: false
+    },
+    isAuthenticated: false,
+    isLoading: true
   });
 
-  // Verify session with server on initial mount
+  // Verify session with server on initial mount using real token / /api/auth/me
   useEffect(() => {
-    UserService.getCurrentUserApi().then((res) => {
-      if (res.success && res.user) {
-        const rawProfile = res.user.profile;
-        if (rawProfile) {
+    let isMounted = true;
+    const token = UserService.getAuthToken();
+
+    if (!token) {
+      if (isMounted) {
+        setState(prev => ({
+          ...prev,
+          profile: null,
+          isAuthenticated: false,
+          isLoading: false
+        }));
+      }
+      return;
+    }
+
+    UserService.getCurrentUserApi()
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.success && res.user && res.user.profile) {
+          const rawProfile = res.user.profile;
           const { profile: normProfile } = normalizeProfileSubscription(rawProfile);
           const trialExpiryMs = normProfile.trialExpiryDate ? new Date(normProfile.trialExpiryDate).getTime() : 0;
           const nowMs = Date.now();
@@ -141,11 +126,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               daysRemaining: Math.max(0, Math.ceil(diffHours / 24)),
               isExpired: normProfile.subscriptionStatus === 'expired'
             },
-            isAuthenticated: true
+            isAuthenticated: true,
+            isLoading: false
+          }));
+        } else {
+          // Token invalid or session expired - clear token
+          UserService.clearAuthToken();
+          UserService.clearActiveSession();
+          setState(prev => ({
+            ...prev,
+            profile: null,
+            isAuthenticated: false,
+            isLoading: false
           }));
         }
-      }
-    }).catch(() => {});
+      })
+      .catch(() => {
+        if (isMounted) {
+          UserService.clearAuthToken();
+          UserService.clearActiveSession();
+          setState(prev => ({
+            ...prev,
+            profile: null,
+            isAuthenticated: false,
+            isLoading: false
+          }));
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const checkEntitlement = (feature: FeatureKey): EntitlementCheckResult => {
@@ -459,12 +470,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           daysRemaining: 3,
           isExpired: normProfile.subscriptionStatus === 'expired'
         },
-        isAuthenticated: true
+        isAuthenticated: true,
+        isLoading: false
       });
     }
   };
 
   const logout = () => {
+    UserService.logoutApi();
+    UserService.clearAuthToken();
     UserService.clearActiveSession();
     setState({
       profile: null,
@@ -482,7 +496,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         daysRemaining: 3,
         isExpired: false
       },
-      isAuthenticated: false
+      isAuthenticated: false,
+      isLoading: false
     });
   };
 

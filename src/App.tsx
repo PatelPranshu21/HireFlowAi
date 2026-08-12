@@ -75,7 +75,7 @@ function MainAppContent() {
   }, [setIsGlobalSearchOpen, setIsDailyBriefingOpen]);
 
   // Auth state
-  const { state: authState, login, logout } = useAuth();
+  const { state: authState, login, logout, selectPlan } = useAuth();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(authState.isAuthenticated);
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -84,22 +84,69 @@ function MainAppContent() {
     setIsAuthenticated(authState.isAuthenticated);
   }, [authState.isAuthenticated]);
 
-  // Route guard for onboarding state
+  // Protected route navigation wrapper
+  const handleNavigate = (tab: NavigationTab | 'create-account', updateHash: boolean = true) => {
+    const targetTab: NavigationTab = (tab === 'create-account' || (tab as string) === 'signup') ? 'signup' : (tab as NavigationTab);
+
+    const protectedTabs: NavigationTab[] = [
+      'dashboard', 'resume-suite', 'job-suite', 'interviews', 
+      'career-tools', 'calendar', 'settings', 'admin', 
+      'support', 'profile', 'billing', 'onboarding', 'pricing', 'checkout'
+    ];
+
+    // Guard 1: Unauthenticated users accessing protected routes -> redirect to login
+    if (!authState.isAuthenticated && protectedTabs.includes(targetTab)) {
+      setAuthRedirectMessage('Please sign in to access your HireFlow AI dashboard.');
+      setCurrentTab('login');
+      if (updateHash) {
+        window.location.hash = 'login';
+        window.history.replaceState(null, '', '/login');
+      }
+      return;
+    }
+
+    // Guard 2: Authenticated users accessing public auth pages or landing -> redirect to dashboard
+    if (authState.isAuthenticated && (targetTab === 'login' || targetTab === 'signup' || (tab as string) === 'create-account' || targetTab === 'landing')) {
+      setCurrentTab('dashboard');
+      if (updateHash) {
+        window.location.hash = 'dashboard';
+        window.history.replaceState(null, '', '/dashboard');
+      }
+      return;
+    }
+
+    setAuthRedirectMessage('');
+    setCurrentTab(targetTab);
+    if (updateHash) {
+      window.location.hash = targetTab;
+      window.history.replaceState(null, '', `/${targetTab === 'landing' ? '' : targetTab}`);
+    }
+    setIsMobileMenuOpen(false);
+  };
+
+  // Route guard for setup & onboarding flow
   useEffect(() => {
-    if (authState.isAuthenticated && profile) {
-      if (profile.hasCompletedOnboarding) {
+    if (!authState.isLoading && authState.isAuthenticated && profile) {
+      const hasSelected = Boolean(profile.hasSelectedPlan) || (profile.subscriptionPlan && profile.subscriptionPlan !== 'None');
+      const hasCompleted = Boolean(profile.hasCompletedOnboarding);
+
+      if (hasCompleted) {
         if (currentTab === 'onboarding') {
-          setCurrentTab('dashboard');
-          window.location.hash = 'dashboard';
+          handleNavigate('dashboard');
+        }
+      } else if (!hasSelected) {
+        // New user has not selected a plan yet -> enforce Plan Selection
+        if (['dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 'settings', 'admin', 'support', 'profile', 'billing', 'onboarding'].includes(currentTab)) {
+          handleNavigate('pricing');
         }
       } else {
+        // Selected plan, but not completed onboarding -> enforce Onboarding
         if (['dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 'settings', 'admin', 'support', 'profile', 'billing'].includes(currentTab)) {
-          setCurrentTab('onboarding');
-          window.location.hash = 'onboarding';
+          handleNavigate('onboarding');
         }
       }
     }
-  }, [authState.isAuthenticated, profile?.hasCompletedOnboarding, currentTab]);
+  }, [authState.isLoading, authState.isAuthenticated, profile?.hasCompletedOnboarding, profile?.hasSelectedPlan, profile?.subscriptionPlan, currentTab]);
 
   // Subscription Checkout State
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<{
@@ -136,7 +183,6 @@ function MainAppContent() {
       const params = new URLSearchParams(queryString);
       const token = params.get('token');
       const tabParam = params.get('tab') as NavigationTab;
-      const onboardingParam = params.get('onboarding') === 'true';
 
       if (token) {
         UserService.setAuthToken(token);
@@ -146,62 +192,58 @@ function MainAppContent() {
             login(res.user.profile);
             updateProfileDetails(res.user.profile);
 
-            const targetTab = tabParam || (res.user.onboardingCompleted ? 'dashboard' : 'onboarding');
-            setCurrentTab(targetTab);
-            window.location.hash = targetTab;
+            const hasSelected = Boolean(res.user.profile?.hasSelectedPlan) || (res.user.profile?.subscriptionPlan && res.user.profile.subscriptionPlan !== 'None');
+            const targetTab = tabParam || (res.user.onboardingCompleted ? 'dashboard' : (hasSelected ? 'onboarding' : 'pricing'));
+            handleNavigate(targetTab);
           }
         }).catch(() => {});
       }
     }
   }, [login, updateProfileDetails]);
 
-  // Sync tab with URL hash
+  // Sync tab with URL hash / pathname
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') as NavigationTab;
-      if (hash && !hash.includes('oauth_callback') && [
-        'landing', 'login', 'signup', 'pricing', 'checkout', 'onboarding', 'dashboard', 'resume-suite', 
-        'job-suite', 'interviews', 'career-tools', 'calendar', 
+    if (authState.isLoading) return;
+
+    const handleLocationChange = () => {
+      let route = window.location.hash.replace('#', '');
+      if (!route || route.startsWith('/')) {
+        const path = window.location.pathname.replace(/^\//, '');
+        if (path) route = path;
+      }
+      if (route.includes('oauth_callback')) return;
+
+      const validTabs = [
+        'landing', 'login', 'signup', 'create-account', 'pricing', 'checkout', 'onboarding',
+        'dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 
         'settings', 'admin', 'support', 'profile', 'billing'
-      ].includes(hash)) {
-        handleNavigate(hash, false);
+      ];
+
+      if (validTabs.includes(route)) {
+        handleNavigate(route as any, false);
+      } else if (!route || route === '') {
+        if (authState.isAuthenticated) {
+          handleNavigate('dashboard', false);
+        } else {
+          handleNavigate('landing', false);
+        }
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    if (window.location.hash) {
-      handleHashChange();
-    }
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [isAuthenticated]);
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
+    handleLocationChange();
 
-  // Protected route navigation wrapper
-  const handleNavigate = (tab: NavigationTab, updateHash: boolean = true) => {
-    const protectedTabs: NavigationTab[] = [
-      'dashboard', 'resume-suite', 'job-suite', 'interviews', 
-      'career-tools', 'calendar', 'settings', 'admin', 
-      'support', 'profile', 'billing'
-    ];
-
-    if (!isAuthenticated && protectedTabs.includes(tab)) {
-      setAuthRedirectMessage('Please sign in to access your HireFlow AI dashboard.');
-      setCurrentTab('login');
-      if (updateHash) window.location.hash = 'login';
-      return;
-    }
-
-    setAuthRedirectMessage('');
-    setCurrentTab(tab);
-    if (updateHash) {
-      window.location.hash = tab;
-    }
-    setIsMobileMenuOpen(false);
-  };
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
+    };
+  }, [authState.isAuthenticated, authState.isLoading]);
 
   const handleLogout = () => {
     logout();
     setIsAuthenticated(false);
-    handleNavigate('landing');
+    handleNavigate('login');
   };
 
   const handleLoginSuccess = (userProfile?: UserProfile, isNewAccount: boolean = false) => {
@@ -214,11 +256,17 @@ function MainAppContent() {
     }
     
     if (isNewAccount) {
-      handleNavigate('onboarding');
+      // NEW USER FLOW: Landing -> Create Account -> Plan Selection -> Onboarding -> Dashboard
+      handleNavigate('pricing');
     } else {
-      const completed = userProfile ? Boolean(userProfile.hasCompletedOnboarding) : Boolean(profile.hasCompletedOnboarding);
+      const activeProfile = userProfile || profile;
+      const completed = activeProfile ? Boolean(activeProfile.hasCompletedOnboarding) : false;
+      const hasSelected = activeProfile ? (Boolean(activeProfile.hasSelectedPlan) || (activeProfile.subscriptionPlan && activeProfile.subscriptionPlan !== 'None')) : false;
+
       if (completed) {
         handleNavigate('dashboard');
+      } else if (!hasSelected) {
+        handleNavigate('pricing');
       } else {
         handleNavigate('onboarding');
       }
@@ -226,7 +274,8 @@ function MainAppContent() {
   };
 
   // Subscription Plan Handlers
-  const handleSelectTrial = () => {
+  const handleSelectTrial = async () => {
+    await selectPlan('3-Day Free Trial');
     const now = new Date();
     const expiry = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Exactly 3 days (72 hours) from now
 
@@ -245,7 +294,7 @@ function MainAppContent() {
       type: 'success'
     });
 
-    if (!profile.hasCompletedOnboarding) {
+    if (!profile?.hasCompletedOnboarding) {
       handleNavigate('onboarding');
     } else {
       handleNavigate('dashboard');
@@ -257,14 +306,15 @@ function MainAppContent() {
     handleNavigate('checkout');
   };
 
-  const handlePaymentSuccess = (planName: 'Basic' | 'Pro' | 'Premium', transaction: TransactionItem) => {
+  const handlePaymentSuccess = async (planName: 'Basic' | 'Pro' | 'Premium', transaction: TransactionItem) => {
+    await selectPlan(planName);
     updateProfileDetails({
       tier: planName === 'Pro' ? 'Gold Tier' : (planName === 'Premium' ? 'Premium Plan' : 'Basic'),
       subscriptionPlan: planName,
       subscriptionStatus: 'active',
       hasSelectedPlan: true,
-      nextBillingDate: '2026-08-25',
-      transactionHistory: [transaction, ...(profile.transactionHistory || [])]
+      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      transactionHistory: [transaction, ...(profile?.transactionHistory || [])]
     });
 
     addNotification({
@@ -273,12 +323,24 @@ function MainAppContent() {
       type: 'success'
     });
 
-    if (!profile.hasCompletedOnboarding) {
+    if (!profile?.hasCompletedOnboarding) {
       handleNavigate('onboarding');
     } else {
       handleNavigate('dashboard');
     }
   };
+
+  // Authentication Loading State Handler
+  if (authState.isLoading) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-mono">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-white/60">Verifying session...</span>
+        </div>
+      </div>
+    );
+  }
 
   // Render Unauthenticated Views (Landing, Login, Signup)
   if (currentTab === 'landing') {
