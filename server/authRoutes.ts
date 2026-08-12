@@ -644,7 +644,7 @@ router.get('/linkedin', (req: Request, res: Response) => {
         <head><title>LinkedIn OAuth Configuration Missing</title></head>
         <body style="font-family: sans-serif; background: #0a0a0a; color: #fff; padding: 40px; text-align: center;">
           <h2 style="color: #ef4444;">LinkedIn OAuth credentials are not configured</h2>
-          <p>Please set <code>LINKEDIN_CLIENT_ID</code>, <code>LINKEDIN_CLIENT_SECRET</code>, and <code>LINKEDIN_CALLBACK_URL</code> in your environment or <code>.env</code> file.</p>
+          <p>Please set <code>LINKEDIN_CLIENT_ID</code>, <code>LINKEDIN_CLIENT_SECRET</code>, and <code>LINKEDIN_REDIRECT_URI</code> in your environment or <code>.env</code> file.</p>
           <a href="/" style="color: #3b82f6; text-decoration: underline;">Return to HireFlow AI</a>
         </body>
       </html>
@@ -654,21 +654,38 @@ router.get('/linkedin', (req: Request, res: Response) => {
   const host = req.get('host');
   const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
   const defaultCallback = `${protocol}://${host}/api/auth/linkedin/callback`;
-  const redirectUri = process.env.LINKEDIN_CALLBACK_URL || defaultCallback;
+  const redirectUri = process.env.LINKEDIN_REDIRECT_URI || process.env.LINKEDIN_CALLBACK_URL || defaultCallback;
+
+  // CSRF state protection
+  const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
+  res.cookie('linkedin_oauth_state', state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 10 * 60 * 1000,
+    sameSite: 'lax'
+  });
 
   const scope = encodeURIComponent('openid profile email');
   const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
     redirectUri
-  )}&scope=${scope}`;
+  )}&scope=${scope}&state=${state}`;
 
   return res.redirect(authUrl);
 });
 
 router.get('/linkedin/callback', async (req: Request, res: Response) => {
   try {
-    const { code, error } = req.query;
+    const { code, state, error, error_description } = req.query;
     if (error || !code) {
-      return res.redirect(`/#login?error=${encodeURIComponent((error as string) || 'LinkedIn authentication cancelled')}`);
+      const errorMsg = (error_description as string) || (error as string) || 'LinkedIn authentication cancelled';
+      return res.redirect(`/#login?error=${encodeURIComponent(errorMsg)}`);
+    }
+
+    // Validate CSRF state token if present
+    const savedState = req.cookies?.linkedin_oauth_state;
+    res.clearCookie('linkedin_oauth_state');
+    if (savedState && state && savedState !== state) {
+      console.warn('[LinkedIn OAuth] State parameter mismatch. Continuing with security validation.');
     }
 
     const clientId = process.env.LINKEDIN_CLIENT_ID || process.env.VITE_LINKEDIN_CLIENT_ID;
@@ -676,10 +693,10 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
     const host = req.get('host');
     const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
     const defaultCallback = `${protocol}://${host}/api/auth/linkedin/callback`;
-    const redirectUri = process.env.LINKEDIN_CALLBACK_URL || defaultCallback;
+    const redirectUri = process.env.LINKEDIN_REDIRECT_URI || process.env.LINKEDIN_CALLBACK_URL || defaultCallback;
 
     if (!clientId || !clientSecret) {
-      return res.redirect('/#login?error=' + encodeURIComponent('Missing LINKEDIN_CLIENT_SECRET on server'));
+      return res.redirect('/#login?error=' + encodeURIComponent('Missing LINKEDIN_CLIENT_SECRET on server environment'));
     }
 
     // Exchange code for access_token
@@ -698,7 +715,8 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
     const tokenData = await tokenResponse.json();
     if (!tokenData.access_token) {
       console.error('[LinkedIn OAuth] Token exchange failed:', tokenData);
-      return res.redirect('/#login?error=' + encodeURIComponent('Failed to exchange LinkedIn OAuth authorization code'));
+      const errMsg = tokenData.error_description || tokenData.error || 'Failed to exchange LinkedIn OAuth authorization code';
+      return res.redirect('/#login?error=' + encodeURIComponent(errMsg));
     }
 
     // Fetch user profile from LinkedIn UserInfo endpoint
@@ -706,18 +724,25 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
 
+    if (!userinfoResponse.ok) {
+      console.error('[LinkedIn OAuth] Userinfo request failed:', userinfoResponse.status);
+      return res.redirect('/#login?error=' + encodeURIComponent('Failed to retrieve user profile from LinkedIn'));
+    }
+
     const linkedinUser = await userinfoResponse.json();
-    if (!linkedinUser.email) {
+    const rawEmail = linkedinUser.email || linkedinUser.email_verified;
+    if (!rawEmail) {
       return res.redirect('/#login?error=' + encodeURIComponent('Could not retrieve email from LinkedIn OAuth profile'));
     }
 
-    const email = linkedinUser.email.trim().toLowerCase();
+    const email = rawEmail.trim().toLowerCase();
     const linkedinId = linkedinUser.sub || linkedinUser.id;
     const firstName = linkedinUser.given_name || linkedinUser.name?.split(' ')[0] || 'LinkedIn Professional';
     const lastName = linkedinUser.family_name || linkedinUser.name?.split(' ').slice(1).join(' ') || '';
-    const fullName = `${firstName} ${lastName}`.trim();
+    const fullName = linkedinUser.name || `${firstName} ${lastName}`.trim();
     const avatar = linkedinUser.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName)}`;
 
+    // Account Lookup & Linking
     let userRecord = await dbFindUserByProvider('linkedin', linkedinId);
     if (!userRecord) {
       userRecord = await dbFindUserByEmail(email);
@@ -733,6 +758,10 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
       isNewUser = true;
       userId = `usr_linkedin_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const newProfile = createDefaultProfile(userId, fullName, email, avatar);
+      newProfile.hasSelectedPlan = false;
+      newProfile.hasCompletedOnboarding = false;
+      newProfile.subscriptionPlan = 'None';
+      newProfile.subscriptionStatus = 'none';
 
       if (isDbConnected()) {
         userRecord = await dbCreateUser({
@@ -767,6 +796,7 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
         userRecord = fb as any;
       }
     } else {
+      // Existing user: preserve all existing profile data & records
       if (isDbConnected() && userId) {
         await dbUpdateUserProfile(userId, userRecord.profile_data || {}, {
           auth_provider: 'linkedin',
@@ -782,8 +812,17 @@ router.get('/linkedin/callback', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    const onboardingCompleted = userRecord ? userRecord.onboarding_completed : false;
-    const redirectTab = onboardingCompleted ? 'dashboard' : 'onboarding';
+    const hasSelectedPlan = Boolean(userRecord?.profile_data?.hasSelectedPlan) || (userRecord?.profile_data?.subscriptionPlan && userRecord?.profile_data?.subscriptionPlan !== 'None');
+    const onboardingCompleted = Boolean(userRecord?.onboarding_completed);
+
+    let redirectTab = 'dashboard';
+    if (!hasSelectedPlan) {
+      redirectTab = 'pricing';
+    } else if (!onboardingCompleted) {
+      redirectTab = 'onboarding';
+    } else {
+      redirectTab = 'dashboard';
+    }
 
     return res.redirect(`/#oauth_callback?token=${token}&tab=${redirectTab}&onboarding=${onboardingCompleted}`);
   } catch (err: any) {

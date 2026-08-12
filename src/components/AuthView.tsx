@@ -46,6 +46,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ mode, onNavigate, onLoginSuc
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<string>('');
 
+  // Extract OAuth error message from URL hash or query if redirected back
+  React.useEffect(() => {
+    const hash = window.location.hash;
+    const search = window.location.search;
+    let urlError = '';
+
+    if (hash && hash.includes('error=')) {
+      const queryString = hash.split('?')[1] || hash.substring(1);
+      const params = new URLSearchParams(queryString);
+      urlError = params.get('error') || '';
+    } else if (search && search.includes('error=')) {
+      const params = new URLSearchParams(search);
+      urlError = params.get('error') || '';
+    }
+
+    if (urlError) {
+      setLoginError(urlError);
+      setSignupError(urlError);
+    }
+  }, []);
+
   // Password strength calculation
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, label: '', color: 'bg-white/10' };

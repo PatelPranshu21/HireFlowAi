@@ -85,7 +85,7 @@ function MainAppContent() {
   }, [authState.isAuthenticated]);
 
   // Protected route navigation wrapper
-  const handleNavigate = (tab: NavigationTab | 'create-account', updateHash: boolean = true) => {
+  const handleNavigate = (tab: NavigationTab | 'create-account', updateHash: boolean = true, isAuthOverride: boolean = false) => {
     const targetTab: NavigationTab = (tab === 'create-account' || (tab as string) === 'signup') ? 'signup' : (tab as NavigationTab);
 
     const protectedTabs: NavigationTab[] = [
@@ -95,7 +95,7 @@ function MainAppContent() {
     ];
 
     // Guard 1: Unauthenticated users accessing protected routes -> redirect to login
-    if (!authState.isAuthenticated && protectedTabs.includes(targetTab)) {
+    if (!isAuthOverride && !authState.isAuthenticated && protectedTabs.includes(targetTab)) {
       setAuthRedirectMessage('Please sign in to access your HireFlow AI dashboard.');
       setCurrentTab('login');
       if (updateHash) {
@@ -194,7 +194,7 @@ function MainAppContent() {
 
             const hasSelected = Boolean(res.user.profile?.hasSelectedPlan) || (res.user.profile?.subscriptionPlan && res.user.profile.subscriptionPlan !== 'None');
             const targetTab = tabParam || (res.user.onboardingCompleted ? 'dashboard' : (hasSelected ? 'onboarding' : 'pricing'));
-            handleNavigate(targetTab);
+            handleNavigate(targetTab, true, true);
           }
         }).catch(() => {});
       }
