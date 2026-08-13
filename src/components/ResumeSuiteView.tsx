@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ResumeAnalysisResult, ResumeVersion, UserProfile, ParsedResumeData, AiImprovementSuggestion } from '../types';
+import { useEcosystem } from '../context/EcosystemContext';
 import { 
   BarChart3, 
   Upload, 
@@ -14,7 +15,8 @@ import {
   TrendingUp,
   MessageSquare,
   Plus,
-  Bot
+  Bot,
+  Loader2
 } from 'lucide-react';
 
 import { ResumeDashboardTab } from './resume/ResumeDashboardTab';
@@ -46,6 +48,15 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   onApplyBulletSuggestion,
   onSelectJobHubTab
 }) => {
+  const { 
+    currentAnalysis, 
+    setCurrentAnalysis,
+    isAnalyzingResume, 
+    activeResumeVersionId, 
+    switchActiveResumeVersion,
+    uploadResume: ecosystemUploadResume
+  } = useEcosystem();
+
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'ats-score' | 'section-analysis' | 'ai-improvements' | 'keywords' | 'tailoring' | 'versions' | 'builder' | 'analytics'
   >('dashboard');
@@ -54,9 +65,10 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
     user?.resumeVersions?.length ? user.resumeVersions : (initialVersions || [])
   );
   const [activeVersionId, setActiveVersionId] = useState<string>(
-    user?.resumeVersions?.[0]?.id || initialVersions?.[0]?.id || ''
+    activeResumeVersionId || user?.resumeVersions?.[0]?.id || initialVersions?.[0]?.id || ''
   );
-  const [analysis, setAnalysis] = useState<ResumeAnalysisResult>(initialAnalysis);
+
+  const analysis = currentAnalysis || initialAnalysis;
 
   useEffect(() => {
     const available = user?.resumeVersions?.length 
@@ -64,11 +76,11 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
       : (initialVersions || []);
     setVersions(available);
     if (available.length > 0) {
-      setActiveVersionId(prev => available.some(v => v.id === prev) ? prev : available[0].id);
+      setActiveVersionId(prev => available.some(v => v.id === prev) ? prev : (activeResumeVersionId || available[0].id));
     } else {
       setActiveVersionId('');
     }
-  }, [user?.resumeVersions, initialVersions]);
+  }, [user?.resumeVersions, initialVersions, activeResumeVersionId]);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isCoachDrawerOpen, setIsCoachDrawerOpen] = useState(false);
@@ -82,25 +94,17 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   };
 
   // Handlers
-  const handleSaveParsedResume = (parsedData: ParsedResumeData, fileName: string, fileText: string) => {
-    onUploadResume(fileText, fileName);
+  const handleSaveParsedResume = async (parsedData: ParsedResumeData, fileName: string, fileText: string) => {
+    showToast(`Analyzing resume "${fileName}" with AI...`);
+    await ecosystemUploadResume(fileText, fileName, parsedData);
+    showToast(`Resume "${fileName}" analyzed successfully!`);
+  };
 
-    const newVersion: ResumeVersion = {
-      id: `v_upload_${Date.now()}`,
-      versionName: fileName,
-      fileName: fileName,
-      uploadedAt: 'Just now',
-      fileSize: '184 KB',
-      score: Math.min(100, analysis.overallScore + 4),
-      template: 'modern_tech',
-      parsedData: parsedData,
-      jobsMatchedCount: 16,
-      content: fileText || parsedData.summary
-    };
-
-    setVersions(prev => [newVersion, ...prev]);
-    setActiveVersionId(newVersion.id);
-    showToast(`Uploaded "${fileName}" and set as active version.`);
+  const handleSelectVersion = async (versionId: string) => {
+    setActiveVersionId(versionId);
+    showToast("Re-analyzing selected resume version with AI...");
+    await switchActiveResumeVersion(versionId);
+    showToast("Switched active resume version!");
   };
 
   const handleSyncWithProfilePrompt = (parsedData: ParsedResumeData) => {
@@ -108,7 +112,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   };
 
   const handleApplySectionChange = (sectionName: string, changeText: string) => {
-    setAnalysis(prev => ({
+    setCurrentAnalysis(prev => ({
       ...prev,
       overallScore: Math.min(100, prev.overallScore + 3)
     }));
@@ -117,7 +121,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
 
   const handleAcceptAiSuggestion = (sug: AiImprovementSuggestion) => {
     onApplyBulletSuggestion(sug.improvedVersion);
-    setAnalysis(prev => ({
+    setCurrentAnalysis(prev => ({
       ...prev,
       overallScore: Math.min(100, prev.overallScore + sug.expectedAtsIncrease)
     }));
@@ -126,7 +130,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
 
   const handleAddKeywordToResume = (keyword: string) => {
     showToast(`Added skill "${keyword}" to active resume draft.`);
-    setAnalysis(prev => ({
+    setCurrentAnalysis(prev => ({
       ...prev,
       overallScore: Math.min(100, prev.overallScore + 2)
     }));
@@ -284,6 +288,19 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
             </div>
           </div>
         ) : (
+          <div>
+            {isAnalyzingResume && (
+              <div className="mb-6 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between text-indigo-200 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+                  <div>
+                    <p className="font-semibold text-sm">Analyzing Resume with AI Engine...</p>
+                    <p className="text-xs text-indigo-300/80">Parsing skills, calculating ATS compliance score, and matching tailored job recommendations.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
           <>
             {activeTab === 'dashboard' && activeVersion && (
               <ResumeDashboardTab
@@ -348,10 +365,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
               <ResumeVersionManagerTab
                 versions={versions}
                 activeVersionId={activeVersionId}
-                onSetActiveVersion={(id) => {
-                  setActiveVersionId(id);
-                  showToast("Switched active resume version.");
-                }}
+                onSetActiveVersion={handleSelectVersion}
                 onDuplicateVersion={handleDuplicateVersion}
                 onRenameVersion={handleRenameVersion}
                 onDeleteVersion={handleDeleteVersion}
@@ -382,6 +396,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
               />
             )}
           </>
+          </div>
         )}
       </main>
 

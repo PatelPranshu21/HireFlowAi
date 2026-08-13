@@ -507,6 +507,7 @@ export interface ResumeVersion {
   uploadedAt: string;
   score: number;
   content: string;
+  resumeText?: string;
   parsedData?: ParsedResumeData;
   fileSize?: string;
   template?: 'modern' | 'executive' | 'minimalist' | 'ats' | 'modern_tech' | 'ats_standard' | string;

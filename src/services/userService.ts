@@ -314,6 +314,8 @@ export class UserService {
     parsedData?: any;
     score?: number;
     template?: string;
+    versionId?: string;
+    versionName?: string;
   }): Promise<boolean> {
     try {
       const token = this.getAuthToken();

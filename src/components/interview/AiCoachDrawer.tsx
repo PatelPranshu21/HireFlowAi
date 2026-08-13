@@ -8,17 +8,22 @@ import {
   RefreshCw,
   MessageSquare
 } from 'lucide-react';
+import { useEcosystem } from '../../context/EcosystemContext';
+import { UserService } from '../../services/userService';
 
 interface AiCoachDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  activeQuestion?: any;
+  activeSession?: any;
 }
 
-export const AiCoachDrawer: React.FC<AiCoachDrawerProps> = ({ isOpen, onClose }) => {
+export const AiCoachDrawer: React.FC<AiCoachDrawerProps> = ({ isOpen, onClose, activeQuestion, activeSession }) => {
+  const { profile } = useEcosystem();
   const [messages, setMessages] = useState<{ sender: 'ai' | 'user'; text: string }[]>([
     { 
       sender: 'ai', 
-      text: "👋 Hi! I'm your HireFlow AI Interview Coach. Ask me anything about coding patterns, system design trade-offs, STAR answers, or company-specific hiring bars!" 
+      text: `👋 Hi ${profile?.name?.split(' ')[0] || 'there'}! I'm your HireFlow AI Interview Coach. Ask me anything about interview preparation, STAR responses, technical tradeoffs, weaknesses, or company hiring bars!` 
     }
   ]);
   const [input, setInput] = useState('');
@@ -26,39 +31,76 @@ export const AiCoachDrawer: React.FC<AiCoachDrawerProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const handleSend = async (promptText?: string) => {
+    const userText = promptText || input;
+    if (!userText.trim() || loading) return;
 
-    const userText = input;
-    setInput('');
+    if (!promptText) setInput('');
     setMessages(prev => [...prev, { sender: 'user', text: userText }]);
     setLoading(true);
 
     try {
+      const history = messages.map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text
+      }));
+
+      const token = UserService.getAuthToken();
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `As an AI Interview Coach, answer this query: ${userText}` })
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          message: userText,
+          context: 'interview_coach',
+          conversationHistory: history,
+          contextData: {
+            targetRole: profile?.targetRole || 'Software Engineer',
+            activeQuestion: activeQuestion ? {
+              question: activeQuestion.question || activeQuestion.text,
+              category: activeQuestion.category,
+              difficulty: activeQuestion.difficulty || 'Medium',
+              userAnswer: activeQuestion.userAnswer || activeQuestion.answer || null,
+              aiFeedback: activeQuestion.feedback || null,
+              starAnalysis: activeQuestion.starAnalysis || null,
+              score: activeQuestion.score || null
+            } : null,
+            activeSession: activeSession ? {
+              title: activeSession.title || activeSession.role || profile?.targetRole || 'Software Engineer',
+              company: activeSession.company || 'Tech Company',
+              interviewType: activeSession.type || activeSession.interviewType || 'Technical & Behavioral',
+              score: activeSession.score || 85
+            } : null,
+            userProfile: {
+              name: profile?.name,
+              title: profile?.title || 'Software Engineer',
+              experienceLevel: profile?.experienceLevel || 'Mid-Senior',
+              skills: profile?.skills || []
+            }
+          }
+        })
       });
+
       if (res.ok) {
         const data = await res.json();
-        setMessages(prev => [...prev, { sender: 'ai', text: data.reply || data.text || "Here is guidance on your question..." }]);
-        setLoading(false);
-        return;
+        setMessages(prev => [...prev, { sender: 'ai', text: data.reply || data.text || "I was unable to evaluate that request right now. Please try asking again." }]);
+      } else {
+        throw new Error(`HTTP Error ${res.status}`);
       }
     } catch (e) {
-      console.warn("AI Chat API call fallback", e);
+      console.error("AI Interview Coach Error:", e);
+      setMessages(prev => [
+        ...prev, 
+        { 
+          sender: 'ai', 
+          text: "I encountered an error contacting the Interview Coach service. Please try again." 
+        }
+      ]);
+    } finally {
+      setLoading(false);
     }
-
-    // Intelligent fallback response
-    setMessages(prev => [
-      ...prev, 
-      { 
-        sender: 'ai', 
-        text: `Regarding "${userText}": Always structure your answer using the STAR method (Situation, Task, Action, Result). Quantify your results with metrics (e.g. reduced latency by 42%, handled 200k DAU).` 
-      }
-    ]);
-    setLoading(false);
   };
 
   return (

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useEcosystem } from '../context/EcosystemContext';
+import { UserService } from '../services/userService';
 import { Sparkles, Bot, Send, X, ChevronUp, ChevronDown, CheckCircle2, AlertCircle, Award, ArrowRight } from 'lucide-react';
 import { ChatMessage } from '../types';
 
@@ -35,14 +36,43 @@ export const AiCareerCoachWidget: React.FC = () => {
     setIsSending(true);
 
     try {
+      const history = chatMessages.map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text
+      }));
+
+      const token = UserService.getAuthToken();
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          prompt: `${userText}\n\nContext on candidate:\nName: ${profile.name}\nATS Score: ${profile.atsScore}\nEmployability Score: ${profile.analytics?.employabilityScore}\nTarget Role: ${profile.targetRole}\nSkills: ${profile.skills?.join(', ')}`,
-          history: chatMessages
+          message: userText,
+          context: 'career_coach',
+          conversationHistory: history,
+          contextData: {
+            userProfile: {
+              name: profile.name,
+              title: profile.title,
+              targetRole: profile.targetRole,
+              targetJobDescription: profile.targetJobDescription,
+              skills: profile.skills,
+              experienceLevel: profile.experienceLevel,
+              targetSalary: profile.targetSalary,
+              location: profile.location,
+              bio: profile.bio
+            },
+            atsScore: profile.atsScore,
+            employabilityScore: profile.analytics?.employabilityScore
+          }
         })
       });
+
+      if (!res.ok) {
+        throw new Error(`HTTP Error ${res.status}`);
+      }
 
       const data = await res.json();
       setChatMessages(prev => [
@@ -50,17 +80,18 @@ export const AiCareerCoachWidget: React.FC = () => {
         {
           id: `msg_${Date.now() + 1}`,
           sender: 'ai',
-          text: data.reply || "I recommend focusing on quantifying your system architecture outcomes and preparing STAR method interview answers.",
+          text: data.reply || data.text || "I was unable to answer your query right now. Please try asking again.",
           timestamp: 'Just now'
         }
       ]);
     } catch (err) {
+      console.error("Career Coach error:", err);
       setChatMessages(prev => [
         ...prev,
         {
           id: `msg_${Date.now() + 1}`,
           sender: 'ai',
-          text: "Your career profile telemetry is performing well! Consider practicing System Design for high-throughput messaging services.",
+          text: "I encountered an error connecting to the AI Career Coach. Please try again.",
           timestamp: 'Just now'
         }
       ]);

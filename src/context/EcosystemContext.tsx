@@ -17,9 +17,11 @@ import {
   FocusSessionLog,
   ProductivityStreaks,
   ProductivitySettings,
-  ThirdPartyIntegrationState
+  ThirdPartyIntegrationState,
+  ResumeAnalysisResult,
+  ResumeVersion
 } from '../types';
-import { initialUserProfile, initialTasks, initialJobRecommendations, initialActivityLogs, sampleNotifications } from '../data/mockData';
+import { initialUserProfile, initialTasks, initialJobRecommendations, initialActivityLogs, sampleNotifications, defaultResumeAnalysis } from '../data/mockData';
 import { WorkflowEngine } from '../services/workflowEngine';
 import { CalendarService } from '../services/calendarService';
 import { AiMemoryService } from '../services/aiMemoryService';
@@ -27,6 +29,8 @@ import { calculateTrialRemaining } from '../utils/trialUtils';
 import { EmployabilityScoreService } from '../services/employabilityScoreService';
 import { ProductivityService } from '../services/productivityService';
 import { UserService } from '../services/userService';
+import { AiProviderService } from '../services/aiProviderService';
+import { getRecommendationsForResume, mockJobsList } from '../data/jobProvider';
 
 interface EcosystemContextType {
   profile: CentralCareerProfile;
@@ -70,8 +74,15 @@ interface EcosystemContextType {
   pushCoachMessage: (msg: Omit<ProactiveCoachMessage, 'id' | 'timestamp'>) => void;
   dailyBriefingData: DailyBriefingData;
 
+  // ATS Analysis State
+  currentAnalysis: ResumeAnalysisResult;
+  setCurrentAnalysis: React.Dispatch<React.SetStateAction<ResumeAnalysisResult>>;
+  activeResumeVersionId: string;
+  isAnalyzingResume: boolean;
+  switchActiveResumeVersion: (versionId: string) => Promise<void>;
+
   // Actions
-  uploadResume: (fileText: string, fileName: string) => void;
+  uploadResume: (fileText: string, fileName: string, parsedData?: any) => Promise<void>;
   applyBulletSuggestion: (bulletText: string) => void;
   applyToJob: (job: { id: string; title: string; company: string; companyLogo?: string; location?: string; salary?: string }) => void;
   saveJob: (jobId: string) => void;
@@ -151,6 +162,11 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   const [isDailyBriefingOpen, setIsDailyBriefingOpen] = useState(false);
   const [coachMessages, setCoachMessages] = useState<ProactiveCoachMessage[]>([]);
 
+  // ATS Analysis & Active Resume Version State
+  const [currentAnalysis, setCurrentAnalysis] = useState<ResumeAnalysisResult>(defaultResumeAnalysis);
+  const [activeResumeVersionId, setActiveResumeVersionId] = useState<string>('');
+  const [isAnalyzingResume, setIsAnalyzingResume] = useState<boolean>(false);
+
   // Reload all user-scoped data whenever currentUserId changes
   useEffect(() => {
     if (!currentUserId) {
@@ -187,6 +203,13 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     UserService.fetchUserDataApi().then(dbData => {
       if (!dbData) return;
 
+      if (dbData.atsReports && dbData.atsReports.length > 0) {
+        const latestReport = dbData.atsReports[0].analysis_data || dbData.atsReports[0];
+        if (latestReport && latestReport.overallScore) {
+          setCurrentAnalysis(latestReport);
+        }
+      }
+
       if (dbData.user && dbData.user.profile_data) {
         const pData = dbData.user.profile_data;
         if (dbData.resumes && dbData.resumes.length > 0) {
@@ -203,8 +226,10 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
             template: v.template || 'modern_tech',
             parsedData: v.parsed_data || {},
             jobsMatchedCount: v.jobs_matched_count || 16,
-            content: v.resume_text
+            content: v.resume_text,
+            resumeText: v.resume_text
           }));
+          setActiveResumeVersionId(pData.resumeVersions[0].id);
         }
         authUpdateProfile(pData);
       }
@@ -358,28 +383,104 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
   };
 
   // Workflow Handlers
-  const uploadResume = (fileText: string, fileName: string) => {
-    UserService.uploadResumeApi({ fileName, fileText });
-    const result = WorkflowEngine.handleResumeUpdated(
-      profile,
-      recommendations,
-      applications,
-      notifications,
-      activities,
-      tasks,
+  const uploadResume = async (fileText: string, fileName: string, parsedData?: any) => {
+    setIsAnalyzingResume(true);
+    const newVersionId = `v_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // 1. Save to DB
+    await UserService.uploadResumeApi({
+      fileName,
       fileText,
-      fileName
-    );
+      parsedData,
+      versionId: newVersionId,
+      versionName: fileName
+    });
 
-    setProfile(result.updatedProfile);
-    setRecommendations(result.updatedJobs);
-    setNotifications(result.updatedNotifications);
-    setActivities(result.updatedActivities);
-    setTasks(result.updatedTasks);
-
-    if (result.newCoachMessage) {
-      setCoachMessages(prev => [result.newCoachMessage!, ...prev]);
+    // 2. Perform dynamic AI resume analysis
+    let analysisResult: ResumeAnalysisResult | null = null;
+    try {
+      analysisResult = await AiProviderService.analyzeResume(fileText, profile.targetRole || "Software Engineer");
+    } catch (err) {
+      console.error("Analysis call failed:", err);
     }
+
+    if (!analysisResult) {
+      analysisResult = defaultResumeAnalysis;
+    }
+
+    setCurrentAnalysis(analysisResult);
+    setActiveResumeVersionId(newVersionId);
+
+    // 3. Construct new version object
+    const newVersionObj: ResumeVersion = {
+      id: newVersionId,
+      versionName: fileName,
+      uploadedAt: 'Just now',
+      resumeText: fileText,
+      content: fileText,
+      parsedData: parsedData || {},
+      score: analysisResult.overallScore || 85,
+      template: 'modern_tech',
+      fileName: fileName,
+      fileSize: '184 KB'
+    };
+
+    const updatedVersions = [newVersionObj, ...(profile.resumeVersions || []).map(v => ({ ...v, isPrimary: false }))];
+    const newSkills = parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected).map(k => k.keyword) || profile.skills;
+
+    const updatedProfile: CentralCareerProfile = {
+      ...profile,
+      atsScore: analysisResult.overallScore || profile.atsScore || 85,
+      skills: newSkills,
+      resumeVersions: updatedVersions,
+      primaryResumeText: fileText,
+      targetRole: parsedData?.targetRole || profile.targetRole || "Software Engineer"
+    };
+
+    // 4. Recalculate job recommendations specifically for this resume
+    const newJobRecs = getRecommendationsForResume(mockJobsList, fileText, newSkills, updatedProfile.targetRole);
+
+    setProfile(updatedProfile);
+    setRecommendations(newJobRecs);
+    setIsAnalyzingResume(false);
+
+    pushCoachMessage({
+      type: 'success',
+      message: `Resume analyzed successfully! ATS Score: ${analysisResult.overallScore}%. Job recommendations updated.`,
+      actionText: 'View Analysis',
+      actionTab: 'resume-suite'
+    });
+  };
+
+  const switchActiveResumeVersion = async (versionId: string) => {
+    const version = profile.resumeVersions?.find(v => v.id === versionId);
+    if (!version) return;
+
+    setActiveResumeVersionId(versionId);
+    setIsAnalyzingResume(true);
+
+    let analysisResult: ResumeAnalysisResult | null = null;
+    try {
+      analysisResult = await AiProviderService.analyzeResume(version.resumeText || version.content || '', profile.targetRole || "Software Engineer");
+    } catch (err) {
+      console.error("Error analyzing version on switch:", err);
+    }
+
+    if (analysisResult) {
+      setCurrentAnalysis(analysisResult);
+      const versionSkills = version.parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected).map(k => k.keyword) || profile.skills;
+
+      setProfile(prev => ({
+        ...prev,
+        atsScore: analysisResult!.overallScore || prev.atsScore,
+        primaryResumeText: version.resumeText || version.content || ''
+      }));
+
+      const reRecs = getRecommendationsForResume(mockJobsList, version.resumeText || version.content || '', versionSkills, profile.targetRole);
+      setRecommendations(reRecs);
+    }
+
+    setIsAnalyzingResume(false);
   };
 
   const applyBulletSuggestion = (bulletText: string) => {
@@ -838,6 +939,11 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         coachMessages,
         pushCoachMessage,
         dailyBriefingData,
+        currentAnalysis,
+        setCurrentAnalysis,
+        activeResumeVersionId,
+        isAnalyzingResume,
+        switchActiveResumeVersion,
         uploadResume,
         applyBulletSuggestion,
         applyToJob,

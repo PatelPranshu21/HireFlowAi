@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, ResumeAnalysisResult } from '../../types';
+import { UserService } from '../../services/userService';
 import { 
   Sparkles, 
   X, 
@@ -34,7 +35,7 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       sender: 'ai',
-      text: `Hello ${user.name || 'Alex'}! I am your HireFlow AI Resume Coach. I've analyzed your Senior Software Engineer resume. Your current ATS score is ${analysis.overallScore}/100. How can I help you optimize your resume today?`,
+      text: `Hello ${user.name || 'there'}! I am your HireFlow AI Resume Coach. I've analyzed your ${user.targetRole || 'Software Engineer'} resume. Your current ATS score is ${analysis?.overallScore || analysis?.atsScore || 82}/100. How can I help optimize your resume today?`,
       time: 'Just now'
     }
   ]);
@@ -45,7 +46,7 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
 
   const handleSend = async (promptText?: string) => {
     const query = promptText || input;
-    if (!query.trim()) return;
+    if (!query.trim() || isThinking) return;
 
     const userMsg: ChatMessage = { sender: 'user', text: query, time: 'Just now' };
     setMessages(prev => [...prev, userMsg]);
@@ -53,28 +54,63 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
     setIsThinking(true);
 
     try {
-      const res = await fetch('/api/ai/improve-section', {
+      const history = messages.map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text
+      }));
+
+      const token = UserService.getAuthToken();
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          sectionName: 'General Career & Resume Advice',
-          currentContent: query,
-          targetRole: user.targetRole || 'Senior Software Engineer'
+          message: query,
+          context: 'resume_coach',
+          conversationHistory: history,
+          contextData: {
+            userProfile: {
+              name: user.name,
+              title: user.title,
+              targetRole: user.targetRole,
+              targetJobDescription: user.targetJobDescription,
+              skills: user.skills,
+              experienceLevel: user.experienceLevel
+            },
+            atsScore: analysis?.atsScore || analysis?.overallScore || 82,
+            formattingScore: analysis?.formattingScore || 90,
+            impactScore: analysis?.impactScore || 75,
+            relevanceScore: analysis?.relevanceScore || 80,
+            overallScore: analysis?.overallScore || 82,
+            summaryReport: analysis?.summary || '',
+            keyStrengths: analysis?.keyStrengths || [],
+            criticalGaps: analysis?.criticalGaps || [],
+            missingKeywords: analysis?.missingKeywords || [],
+            matchingKeywords: analysis?.matchingKeywords || [],
+            actionableSuggestions: analysis?.actionableSuggestions || [],
+            resumeText: user.rawResumeText || ''
+          }
         })
       });
-      const data = await res.json();
 
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const data = await res.json();
       const aiMsg: ChatMessage = {
         sender: 'ai',
-        text: data.suggestion || "To elevate your resume for Senior Software Engineering positions, focus on quantifying scale (e.g., requests per second, revenue impacted) and explicitly highlighting system architecture keywords like Kafka, Kubernetes, and gRPC.",
+        text: data.reply || data.suggestion || "I was unable to analyze that right now. Please try asking again.",
         time: 'Just now'
       };
       setMessages(prev => [...prev, aiMsg]);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Coach error:", err);
       const aiMsg: ChatMessage = {
         sender: 'ai',
-        text: "I recommend focusing on quantifying metrics in your Apple and TechCorp work history bullets. For example: 'Architected distributed services handling 10k+ requests/sec using Kafka and Redis.'",
+        text: "I encountered an error connecting to the AI Resume Coach. Please try again or check your server connection.",
         time: 'Just now'
       };
       setMessages(prev => [...prev, aiMsg]);

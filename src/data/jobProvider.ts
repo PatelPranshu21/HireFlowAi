@@ -829,3 +829,69 @@ export function calculateDynamicMatchScore(job: JobRecommendation, user: UserPro
     reason: job.recommendationReason || `Strong alignment with your profile as a ${user.title || 'Software Engineer'}.`
   };
 }
+
+// Generate job recommendations tailored specifically to the active resume's content, skills, and target role
+export function getRecommendationsForResume(
+  jobs: JobRecommendation[],
+  resumeText: string,
+  skills: string[],
+  targetRole: string = 'Software Engineer'
+): JobRecommendation[] {
+  const textLower = (resumeText || '').toLowerCase();
+  const userSkillsLower = (skills || []).map(s => s.toLowerCase());
+
+  return jobs.map(job => {
+    const jobTitleLower = job.title.toLowerCase();
+    const jobCompanyLower = job.company.toLowerCase();
+    const jobTagsLower = (job.tags || []).map(t => t.toLowerCase());
+    const reqSkillsLower = (job.requiredSkills || []).map(r => r.toLowerCase());
+
+    let matchPoints = 60;
+
+    // 1. Title alignment
+    const roleWords = targetRole.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    for (const word of roleWords) {
+      if (jobTitleLower.includes(word)) {
+        matchPoints += 8;
+      }
+    }
+
+    // 2. Skills overlap
+    const allJobSkills = [...new Set([...jobTagsLower, ...reqSkillsLower])];
+    let matchedSkillsCount = 0;
+
+    const matchingSkillsList: string[] = [];
+    const missingSkillsList: string[] = [];
+
+    allJobSkills.forEach(js => {
+      const isMatched = userSkillsLower.some(us => us.includes(js) || js.includes(us)) || textLower.includes(js);
+      if (isMatched) {
+        matchedSkillsCount++;
+        matchingSkillsList.push(js);
+      } else {
+        missingSkillsList.push(js);
+      }
+    });
+
+    if (allJobSkills.length > 0) {
+      const ratio = matchedSkillsCount / allJobSkills.length;
+      matchPoints += Math.round(ratio * 30);
+    }
+
+    if (textLower.includes(jobCompanyLower)) {
+      matchPoints += 5;
+    }
+
+    const finalScore = Math.min(98, Math.max(62, matchPoints));
+    const confidence: 'Very High' | 'High' | 'Moderate' = finalScore >= 90 ? 'Very High' : finalScore >= 80 ? 'High' : 'Moderate';
+
+    return {
+      ...job,
+      matchScore: finalScore,
+      matchConfidence: confidence,
+      requiredSkills: matchingSkillsList.length > 0 ? matchingSkillsList : job.requiredSkills,
+      missingSkills: missingSkillsList.length > 0 ? missingSkillsList.slice(0, 3) : job.missingSkills,
+      recommendationReason: `Matched against active resume skills: ${matchingSkillsList.slice(0, 4).join(', ') || 'core engineering keywords'}.`
+    };
+  }).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+}

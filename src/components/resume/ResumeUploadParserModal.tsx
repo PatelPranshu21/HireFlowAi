@@ -137,35 +137,13 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
           gitHub: data.gitHub || user.gitHubUrl || "",
           portfolio: data.portfolio || user.portfolioUrl || "",
           summary: data.summary || "",
-          education: data.education?.length ? data.education : [
-            { id: 'edu_1', degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
-          ],
-          experience: data.experience?.length ? data.experience : [
-            {
-              id: 'exp_1',
-              company: "Apple",
-              role: "Senior Software Engineer",
-              period: "2021 - Present",
-              location: "Cupertino, CA",
-              bullets: [
-                "Architected and deployed highly available distributed streaming services handling 10k+ req/sec using Kafka & Redis.",
-                "Led frontend performance migration to Next.js and TypeScript, reducing p99 latency by 35%.",
-                "Automated AWS multi-region infrastructure (EC2, EKS, S3) with Terraform CI/CD pipelines."
-              ]
-            }
-          ],
-          projects: data.projects?.length ? data.projects : [
-            {
-              id: 'proj_1',
-              name: "CloudScale Engine",
-              description: "High-performance distributed event broker built with Go and WebSockets.",
-              technologies: ["Go", "Kafka", "Docker", "Kubernetes"]
-            }
-          ],
-          skills: data.skills || ["TypeScript", "React", "Next.js", "Node.js", "Go", "Python", "AWS", "Docker", "Kubernetes", "PostgreSQL", "Kafka", "Redis"],
-          certifications: data.certifications || ["AWS Certified Solutions Architect"],
-          languages: data.languages || ["English (Native)", "Spanish (Professional)"],
-          achievements: data.achievements || ["Top 1% Contributor on GitHub"]
+          education: data.education || [],
+          experience: data.experience || [],
+          projects: data.projects || [],
+          skills: data.skills || [],
+          certifications: data.certifications || [],
+          languages: data.languages || [],
+          achievements: data.achievements || []
         };
 
         setParsedData(newParsed);
