@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+
 import dotenv from "dotenv";
 import { initDb, dbSaveAtsReport, dbSaveInterviewSession } from "./src/db/postgres";
 import authRoutes from "./server/authRoutes";
@@ -19,7 +19,7 @@ import {
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
@@ -27,24 +27,68 @@ app.use(cookieParser());
 // Mount Authentication & OAuth routes
 app.use("/api/auth", authRoutes);
 
-// Lazy initializer for Gemini client
-let aiClient: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY environment variable is missing. AI features will fallback to smart mock responses if missing.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey || "dummy-key-for-fallback",
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
+// Groq API Helper
+async function callGroq(
+  systemPrompt: string,
+  userMessage: string,
+  history: any[] = [],
+  expectJson: boolean = false
+): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("AI service is not configured. Please configure GROQ_API_KEY.");
   }
-  return aiClient;
+
+  const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+  
+  const messages = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+
+  // Format history
+  if (Array.isArray(history)) {
+    for (const msg of history) {
+      if (msg.role === 'model' || msg.role === 'assistant') {
+        messages.push({ role: 'assistant', content: typeof msg.parts !== 'undefined' ? msg.parts[0].text : msg.content });
+      } else {
+        messages.push({ role: 'user', content: typeof msg.parts !== 'undefined' ? msg.parts[0].text : msg.content });
+      }
+    }
+  }
+
+  if (userMessage) {
+    messages.push({ role: 'user', content: userMessage });
+  }
+
+  const body: any = {
+    model: model,
+    messages: messages,
+    temperature: 0.7,
+    max_completion_tokens: 1500
+  };
+
+  if (expectJson) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Groq API error:", text);
+    throw new Error(`Groq API error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.choices[0].message.content;
 }
 
 // ------------------- SUBSCRIPTION & USAGE ENDPOINTS -------------------
@@ -299,29 +343,6 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
 
     const resumeText = await extractTextFromPayload({ fileText: rawResumeText, fileData, fileName });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      const localAnalysis = analyzeResumeContentLocally(resumeText, targetRole || "Software Engineer");
-      
-      if (req.userId && req.userId !== 'usr_guest') {
-        await dbSaveAtsReport(req.userId, {
-          resume_id: resumeVersionId,
-          target_role: targetRole || "Software Engineer",
-          overall_score: localAnalysis.overallScore,
-          formatting_score: localAnalysis.formattingScore,
-          summary: localAnalysis.summary,
-          keywords: localAnalysis.keywords,
-          impact_points: localAnalysis.impactPoints,
-          grammar_issues: localAnalysis.grammarIssues,
-          analysis_data: localAnalysis
-        });
-      }
-
-      await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
-      return res.json(localAnalysis);
-    }
-
-    const ai = getGenAI();
     const prompt = `Analyze the following resume for a target role of "${targetRole || 'Software Engineer'}".
     Provide a comprehensive, highly realistic ATS scoring analysis in JSON format with:
     - overallScore (0-100 number derived from actual content)
@@ -341,70 +362,9 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
     ${resumeText}
     """`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            overallScore: { type: Type.INTEGER },
-            formattingScore: { type: Type.INTEGER },
-            impactScore: { type: Type.INTEGER },
-            relevanceScore: { type: Type.INTEGER },
-            summary: { type: Type.STRING },
-            targetRole: { type: Type.STRING },
-            keywordList: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  keyword: { type: Type.STRING },
-                  detected: { type: Type.BOOLEAN },
-                  importance: { type: Type.STRING },
-                  category: { type: Type.STRING },
-                  frequency: { type: Type.INTEGER }
-                }
-              }
-            },
-            categoryScores: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  category: { type: Type.STRING },
-                  score: { type: Type.INTEGER },
-                  explanation: { type: Type.STRING },
-                  tip: { type: Type.STRING }
-                }
-              }
-            },
-            keywords: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  type: { type: Type.STRING },
-                  title: { type: Type.STRING },
-                  impactTag: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  suggestionTitle: { type: Type.STRING },
-                  suggestionText: { type: Type.STRING },
-                  originalBullet: { type: Type.STRING },
-                  suggestedBullet: { type: Type.STRING },
-                },
-              },
-            },
-            impactPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-            grammarIssues: { type: Type.ARRAY, items: { type: Type.STRING } },
-          },
-        },
-      },
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
+    
     if (req.userId && req.userId !== 'usr_guest') {
       await dbSaveAtsReport(req.userId, {
         resume_id: resumeVersionId,
@@ -418,13 +378,12 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
         analysis_data: parsed
       });
     }
+    
     await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/analyze-resume:", err);
-    // Fallback to local dynamic analysis on error
-    const localFallback = analyzeResumeContentLocally(req.body.resumeText, req.body.targetRole || "Software Engineer");
-    res.json(localFallback);
+    res.status(503).json({ error: err.message || "Failed to analyze resume" });
   }
 });
 
@@ -436,22 +395,6 @@ app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), asy
       return res.status(400).json({ error: "jobDescription is required" });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
-      return res.json({
-        matchScore: 86,
-        matchingSkills: ["React", "TypeScript", "Node.js", "Git", "REST APIs"],
-        missingSkills: ["GraphQL", "Kubernetes", "System Architecture Documentation"],
-        keywordDensityScore: 84,
-        suggestions: [
-          "Add GraphQL query building experience to your recent project section.",
-          "Emphasize Kubernetes container deployments in your DevOps skill highlights."
-        ]
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Compare this resume against the target job description for position "${jobTitle || 'Role'}" at "${company || 'Company'}".
     Provide an analysis JSON containing:
     - matchScore (0-100 number)
@@ -470,30 +413,13 @@ app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), asy
     ${jobDescription}
     """`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            matchScore: { type: Type.INTEGER },
-            matchingSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            missingSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            keywordDensityScore: { type: Type.INTEGER },
-            suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-          },
-        },
-      },
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
     await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/match-job:", err);
-    res.status(500).json({ error: "Failed to perform job match analysis", details: err.message });
+    res.status(503).json({ error: err.message || "Failed to perform job match analysis" });
   }
 });
 
@@ -507,57 +433,6 @@ app.post("/api/ai/parse-resume", async (req, res) => {
 
     const resumeText = await extractTextFromPayload({ fileText: rawText, fileData, fileName });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.json({
-        fullName: "Alex Morgan",
-        email: "alex.dev@hireflow.ai",
-        phone: "+1 (555) 234-5678",
-        linkedIn: "https://linkedin.com/in/alex-dev",
-        gitHub: "https://github.com/alex-dev-lead",
-        portfolio: "https://alexmorgan.dev",
-        summary: "Seasoned Senior Software Engineer with 7+ years of experience in distributed cloud systems, modern web architecture (React, TypeScript, Node.js), and high-throughput microservices.",
-        education: [
-          { degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
-        ],
-        experience: [
-          {
-            company: "Apple",
-            role: "Senior Software Engineer",
-            period: "2021 - Present",
-            location: "Cupertino, CA",
-            bullets: [
-              "Architected and deployed highly available distributed streaming services handling 10k+ req/sec using Kafka & Redis.",
-              "Led frontend performance migration to Next.js and TypeScript, reducing p99 latency by 35%.",
-              "Automated AWS multi-region infrastructure (EC2, EKS, S3) with Terraform CI/CD pipelines."
-            ]
-          },
-          {
-            company: "TechCorp Inc.",
-            role: "Full Stack Developer",
-            period: "2018 - 2021",
-            location: "San Francisco, CA",
-            bullets: [
-              "Engineered real-time telemetry dashboards serving 250k daily active users.",
-              "Designed resilient PostgreSQL schemas and GraphQL API microservices."
-            ]
-          }
-        ],
-        projects: [
-          {
-            name: "CloudScale Engine",
-            description: "High-performance distributed event broker built with Go and WebSockets.",
-            technologies: ["Go", "Kafka", "Docker", "Kubernetes"]
-          }
-        ],
-        skills: ["TypeScript", "React", "Next.js", "Node.js", "Go", "Python", "AWS", "Docker", "Kubernetes", "PostgreSQL", "Kafka", "Redis"],
-        certifications: ["AWS Certified Solutions Architect", "CKA (Certified Kubernetes Administrator)"],
-        languages: ["English (Native)", "Spanish (Professional)"],
-        achievements: ["Patent co-inventor for distributed data caching", "Top 1% Contributor on GitHub"]
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Parse the following raw resume text into a structured JSON object containing:
     - fullName, email, phone, linkedIn, gitHub, portfolio, summary
     - education (array of { degree, institution, year, gpa })
@@ -573,15 +448,8 @@ app.post("/api/ai/parse-resume", async (req, res) => {
     ${resumeText}
     """`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    res.json(JSON.parse(response.text || "{}"));
+    const responseText = await callGroq(prompt, "", [], true);
+    res.json(JSON.parse(responseText || "{}"));
   } catch (err: any) {
     console.error("Error in /api/ai/parse-resume:", err);
     res.status(500).json({ error: "Failed to parse resume", details: err.message });
@@ -592,24 +460,6 @@ app.post("/api/ai/parse-resume", async (req, res) => {
 app.post("/api/ai/tailor-resume", enforceFeatureEntitlement('jobMatchAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeContent, jobDescription, targetRole, company } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
-      return res.json({
-        matchPercentage: 92,
-        missingSkills: ["GraphQL Subscriptions", "Kubernetes Mesh"],
-        missingKeywords: ["Event-Driven Microservices", "CI/CD Gateways"],
-        suggestedChanges: [
-          "Reframe Apple experience bullet 1 to highlight Event-Driven architecture.",
-          "Insert Kubernetes cluster deployment explicitly into skills section."
-        ],
-        tailoredResumeContent: `${resumeContent || ''}\n\n[TAILORED FOR ${company || 'TARGET ROLE'}]:\n• Spearheaded event-driven microservice orchestration using Kubernetes & Docker.\n• Integrated GraphQL subscriptions and distributed caching for low-latency state synchronization.`,
-        tailoredVersionName: `Tailored: ${targetRole || 'Role'} at ${company || 'Target Co'}`
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Tailor this candidate's resume for the specific job description at "${company || 'Target Company'}" for role "${targetRole || 'Target Role'}".
     Provide JSON with:
     - matchPercentage (0-100 number)
@@ -629,13 +479,8 @@ app.post("/api/ai/tailor-resume", enforceFeatureEntitlement('jobMatchAnalyses'),
     ${jobDescription}
     """`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
     await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
@@ -648,21 +493,6 @@ app.post("/api/ai/tailor-resume", enforceFeatureEntitlement('jobMatchAnalyses'),
 app.post("/api/ai/improve-section", enforceFeatureEntitlement('bulletRewrites'), async (req: SubscriptionRequest, res) => {
   try {
     const { sectionName, currentText, improvementType, targetRole } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      await recordFeatureUsage(req.userId, req.userProfile, 'bulletRewrites', req.guestKey);
-      return res.json({
-        originalText: currentText || "Built backend web services.",
-        improvedText: sectionName === 'summary' 
-          ? "High-impact Senior Software Engineer with 7+ years of expertise in architecting resilient distributed microservices, optimizing web application performance by 35%+, and leading cloud infrastructure deployments across AWS and Kubernetes."
-          : "Architected distributed REST/gRPC backend microservices in Node.js and Go, reducing API p99 response times by 42% for 250,000 active daily users.",
-        reason: `Enhanced with active leadership verbs, quantified metrics, and target ATS keywords for ${targetRole || 'Senior Software Engineer'}.`,
-        expectedAtsIncrease: 7
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Improve the following resume section ("${sectionName}") for a target role of "${targetRole || 'Senior Software Engineer'}".
     Improvement goal: ${improvementType || 'Quantify impact, add strong action verbs, fix passive voice, and optimize for ATS keywords'}.
     
@@ -677,18 +507,13 @@ app.post("/api/ai/improve-section", enforceFeatureEntitlement('bulletRewrites'),
     - reason (explanation of why this version is stronger)
     - expectedAtsIncrease (integer number between 3 and 12)`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
     await recordFeatureUsage(req.userId, req.userProfile, 'bulletRewrites', req.guestKey);
     res.json(parsed);
   } catch (err: any) {
     console.error("Error in /api/ai/improve-section:", err);
-    res.status(500).json({ error: "Failed to improve resume section", details: err.message });
+    res.status(503).json({ error: err.message || "Failed to improve resume section" });
   }
 });
 
@@ -696,28 +521,6 @@ app.post("/api/ai/improve-section", enforceFeatureEntitlement('bulletRewrites'),
 app.post("/api/ai/generate-cover-letter", enforceFeatureEntitlement('coverLetterGenerations'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeText, jobDescription, jobTitle, company, tone } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      const selectedTone = tone || "professional & confident";
-      await recordFeatureUsage(req.userId, req.userProfile, 'coverLetterGenerations', req.guestKey);
-      return res.json({
-        coverLetter: `Dear Hiring Manager at ${company || 'the Hiring Team'},
-
-I am writing to express my strong enthusiasm for the ${jobTitle || 'Software Engineer'} role. With over 6 years of hands-end engineering experience across scalable cloud services, modern web frameworks, and high-performance system design, I am confident in my ability to drive immediate value for your team.
-
-Throughout my career, I have consistently focused on delivering robust, high-impact software solutions. For example, at Apple, I architected distributed streaming pipelines handling high-throughput traffic while reducing frontend load times by 35%. My technical toolkit—spanning TypeScript, React, Node.js, Python, and AWS—aligns directly with the priorities outlined in your job requirements.
-
-What excites me most about ${company || 'your company'} is your commitment to technical innovation and engineering excellence. I thrive in collaborative environments that demand technical rigor and product ownership, and I look forward to contributing to your upcoming roadmap.
-
-Thank you for your time and consideration. I would welcome the opportunity to discuss how my background and technical leadership align with your team's goals.
-
-Sincerely,
-Alex Dev`
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Generate a compelling, highly tailored cover letter for the role of "${jobTitle || 'Role'}" at "${company || 'Company'}".
     Tone requested: ${tone || 'Professional, confident, and engaging'}.
     
@@ -731,16 +534,12 @@ Alex Dev`
     ${jobDescription || 'Seeking an innovative engineer to build high-scale web platforms and APIs.'}
     """`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-    });
-
+    const responseText = await callGroq(prompt, "", [], false);
     await recordFeatureUsage(req.userId, req.userProfile, 'coverLetterGenerations', req.guestKey);
-    res.json({ coverLetter: response.text });
+    res.json({ coverLetter: responseText });
   } catch (err: any) {
     console.error("Error in /api/ai/generate-cover-letter:", err);
-    res.status(500).json({ error: "Failed to generate cover letter", details: err.message });
+    res.status(503).json({ error: err.message || "Failed to generate cover letter" });
   }
 });
 
@@ -748,25 +547,6 @@ Alex Dev`
 app.post("/api/ai/interview-feedback", enforceFeatureEntitlement('mockInterviews'), async (req: SubscriptionRequest, res) => {
   try {
     const { question, answer, role } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      await recordFeatureUsage(req.userId, req.userProfile, 'mockInterviews', req.guestKey);
-      return res.json({
-        score: 88,
-        starBreakdown: {
-          situation: "Clear context provided regarding team scalability challenge.",
-          task: "Well-defined objective to reduce API response latency.",
-          action: "Strong technical detail on Redis caching and query indexing.",
-          result: "Quantified 40% speedup achieved."
-        },
-        strengths: ["Great technical precision", "Data-driven results"],
-        areasToImprove: ["Mention cross-functional stakeholder communication briefly."],
-        polishedAnswer: "In my previous role, I faced an API bottleneck during peak traffic. I led the backend refactoring by introducing Redis caching layers and optimizing PostgreSQL query execution plans, ultimately reducing p99 latency by 42% for 150k active sessions."
-      });
-    }
-
-    const ai = getGenAI();
     const prompt = `Evaluate the candidate's answer for an interview question for role "${role || 'Software Engineer'}".
     Question: "${question}"
     Candidate Answer: "${answer}"
@@ -778,33 +558,8 @@ app.post("/api/ai/interview-feedback", enforceFeatureEntitlement('mockInterviews
     - areasToImprove: array of string bullet points
     - polishedAnswer: an exemplar STAR-aligned improved answer string`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.INTEGER },
-            starBreakdown: {
-              type: Type.OBJECT,
-              properties: {
-                situation: { type: Type.STRING },
-                task: { type: Type.STRING },
-                action: { type: Type.STRING },
-                result: { type: Type.STRING },
-              },
-            },
-            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-            areasToImprove: { type: Type.ARRAY, items: { type: Type.STRING } },
-            polishedAnswer: { type: Type.STRING },
-          },
-        },
-      },
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
     if (req.userId && req.userId !== 'usr_guest') {
       await dbSaveInterviewSession(req.userId, {
         topic: role || 'Technical Interview',
@@ -826,31 +581,114 @@ app.post("/api/ai/interview-feedback", enforceFeatureEntitlement('mockInterviews
   }
 });
 
-// 5. AI Career Coach Chat
+// 5. AI Context-Aware Chat
 app.post("/api/ai/chat", async (req, res) => {
   try {
-    const { prompt, history } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.json({
-        reply: `As your HireFlow AI Career Coach, I recommend focusing on highlighting quantifiable achievements in your resume and preparing STAR-structured answers for technical system design interviews. What specific topic would you like to explore next?`
-      });
+    const { message, prompt, context, conversationHistory, contextData } = req.body;
+    const ai = process.env.GROQ_API_KEY;
+    if (!ai) {
+      return res.status(503).json({ error: "AI is temporarily unavailable. Please configure the GROQ_API_KEY." });
+    }
+    // Determine system prompt based on context
+    let systemInstruction = "You are an AI Assistant for HireFlow AI. Help the user with their career, resume, and interviews.";
+    
+    if (context === "resume_coach") {
+      systemInstruction = `You are the HireFlow AI Resume Coach. 
+Role: Provide expert advice on the user's resume, ATS scoring, keywords, and formatting.
+Critical Rule: You MUST base your answers on the provided Active Resume Context. DO NOT hallucinate skills or experience that are not in the resume text. If asked about something not in the resume, clearly state it is not present.
+Active Resume Context:
+Target Role: ${contextData?.userProfile?.targetRole || 'Not specified'}
+ATS Score: ${contextData?.atsScore || 0}/100
+Resume Content:
+${contextData?.resumeText ? '"""\\n' + contextData.resumeText + '\\n"""' : 'No resume uploaded.'}
+`;
+    } else if (context === "interview_coach") {
+      systemInstruction = `You are the HireFlow AI Interview Coach.
+Role: Help the user prepare for interviews, specifically focusing on the STAR method, technical tradeoffs, and behavioral answers.
+Target Role: ${contextData?.targetRole || contextData?.activeSession?.title || 'Not specified'}
+Current Question: ${contextData?.activeQuestion ? JSON.stringify(contextData.activeQuestion) : 'General prep'}
+User Profile: ${contextData?.userProfile ? JSON.stringify(contextData.userProfile) : 'Not specified'}
+Do not give general resume advice unless specifically asked. Focus on the interview question at hand. Provide concise, actionable feedback.`;
+    } else if (context === "career_coach") {
+      systemInstruction = `You are the HireFlow AI Global Career Coach.
+Role: Act as a holistic career strategist, offering roadmap generation, learning paths, and employability advice.
+User Profile: ${contextData?.userProfile ? JSON.stringify(contextData.userProfile) : 'Not specified'}
+ATS Score: ${contextData?.atsScore || 0}/100
+Employability Score: ${contextData?.employabilityScore || 0}/100
+Be strategic, encouraging, and provide concrete roadmaps or next steps.`;
     }
 
-    const ai = getGenAI();
-    const chat = ai.chats.create({
-      model: "gemini-3.6-flash",
-      config: {
-        systemInstruction: "You are HireFlow AI's Lead Career Strategist and Tech Recruitment Coach. Provide concise, strategic, high-value career, resume, and interview guidance for software engineering and tech professionals.",
-      },
-    });
+    // For chat, we pass history directly. callGroq handles role mapping.
+    const userMessage = message || prompt;
+    if (!userMessage) {
+      return res.status(400).json({ error: "Message is required." });
+    }
 
-    const response = await chat.sendMessage({ message: prompt });
-    res.json({ reply: response.text });
+    const reply = await callGroq(systemInstruction, userMessage, conversationHistory, false);
+    res.json({ reply });
   } catch (err: any) {
     console.error("Error in /api/ai/chat:", err);
     res.status(500).json({ error: "Failed to process AI chat message", details: err.message });
+  }
+});
+
+// 6. Generate Interview Questions
+app.post("/api/ai/generate-questions", enforceFeatureEntitlement('mockInterviews'), async (req: SubscriptionRequest, res) => {
+  try {
+    const { domain, level, company, resumeSkills } = req.body;
+    const prompt = `Generate exactly 3 realistic mock interview questions for a ${level || ''} ${domain || 'Software Engineer'} at ${company || 'Tech Firm'}.
+    The candidate's skills are: ${resumeSkills?.join(', ') || 'Not provided'}.
+    Output JSON with an array of exactly 3 objects:
+    - id (string)
+    - role (string)
+    - company (string)
+    - type (string: "Technical", "System Design", or "Behavioral")
+    - question (string)
+    - hint (string)
+    - modelAnswer (string)`;
+
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
+    // Ensure we return an array
+    const questions = Array.isArray(parsed) ? parsed : (parsed.questions || []);
+    res.json(questions);
+  } catch (err: any) {
+    console.error("Error in /api/ai/generate-questions:", err);
+    res.status(503).json({ error: err.message || "Failed to generate interview questions" });
+  }
+});
+
+// 7. Generate Interview Session Report
+app.post("/api/ai/generate-report", enforceFeatureEntitlement('mockInterviews'), async (req: SubscriptionRequest, res) => {
+  try {
+    const { sessionTitle, companyName, answers } = req.body;
+    const answersText = answers.map((a: any, i: number) => `Q${i+1}: ${a.questionText}\nScore: ${a.feedback?.score}\nA: ${a.userAudioOrText}`).join('\n\n');
+    
+    const prompt = `Generate a comprehensive Post-Interview Feedback Report based on the following candidate answers.
+    Session: ${sessionTitle} for ${companyName}
+    
+    Answers and previous feedback scores:
+    ${answersText}
+    
+    Provide JSON containing:
+    - sessionTitle (string)
+    - companyName (string)
+    - overallScore (0-100)
+    - technicalScore (0-100)
+    - communicationScore (0-100)
+    - problemSolvingScore (0-100)
+    - confidenceScore (0-100)
+    - strengths (array of strings)
+    - weaknesses (array of strings)
+    - improvementSuggestions (array of strings)
+    - recommendedLearningTopics (array of strings)`;
+
+    const responseText = await callGroq(prompt, "", [], true);
+    const parsed = JSON.parse(responseText || "{}");
+    res.json(parsed);
+  } catch (err: any) {
+    console.error("Error in /api/ai/generate-report:", err);
+    res.status(503).json({ error: err.message || "Failed to generate interview report" });
   }
 });
 
@@ -877,7 +715,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`HireFlow AI full-stack server running on http://0.0.0.0:${PORT}`);
   });
 }

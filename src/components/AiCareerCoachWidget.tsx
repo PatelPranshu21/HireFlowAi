@@ -70,8 +70,15 @@ export const AiCareerCoachWidget: React.FC = () => {
         })
       });
 
+      let errorMessage = "I encountered an error connecting to the AI Career Coach. Please try again.";
       if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}`);
+        try {
+          const errData = await res.json();
+          if (errData.error) {
+            errorMessage = errData.error;
+          }
+        } catch (e) {}
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
@@ -84,14 +91,14 @@ export const AiCareerCoachWidget: React.FC = () => {
           timestamp: 'Just now'
         }
       ]);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Career Coach error:", err);
       setChatMessages(prev => [
         ...prev,
         {
           id: `msg_${Date.now() + 1}`,
           sender: 'ai',
-          text: "I encountered an error connecting to the AI Career Coach. Please try again.",
+          text: err.message || "I encountered an error connecting to the AI Career Coach. Please try again.",
           timestamp: 'Just now'
         }
       ]);

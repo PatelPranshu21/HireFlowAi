@@ -69,26 +69,11 @@ class AIInterviewService {
         };
       }
     } catch (err) {
-      console.warn("API call failed, using intelligent fallback", err);
+      console.warn("API call failed", err);
+      throw new Error("AI service is not configured or failed.");
     }
 
-    // Fallback response generator
-    return {
-      score: 88,
-      confidenceScore: 86,
-      clarityScore: 90,
-      structureScore: 88,
-      professionalismScore: 92,
-      starBreakdown: {
-        situation: "Identified high latency spike during peak session traffic.",
-        task: "Objective: Restore sub-100ms API response latency SLA.",
-        action: "Engineered Redis distributed caching layer and optimized PostgreSQL query indexes.",
-        result: "Cut p99 latency by 42% for 200k active sessions while keeping cloud costs constant."
-      },
-      strengths: ["Strong technical metrics", "Structured action sequence"],
-      areasToImprove: ["Highlight cross-functional stakeholder communication briefly."],
-      polishedAnswer: `During a major release, our streaming service experienced a p99 latency spike to 450ms. As lead engineer, my goal was restoring sub-100ms API response times. I deployed a Redis distributed caching layer for read-heavy payloads and optimized database query execution plans, cutting p99 latency by 42% for 200,000 daily active users.`
-    };
+    throw new Error("API call returned non-ok status");
   }
 
   // 2. Generate Realistic Mock Interview Questions tailored to role & resume
@@ -100,35 +85,15 @@ class AIInterviewService {
   ): Promise<InterviewQuestion[]> {
     const skillsText = resumeSkills.length > 0 ? resumeSkills.slice(0, 5).join(', ') : 'React, Node.js, AWS, Python';
 
-    return [
-      {
-        id: `q_gen_1_${Date.now()}`,
-        role: `${level} ${domain} Engineer`,
-        company: company,
-        type: 'Technical',
-        question: `How would you handle high-throughput concurrent requests in a ${domain} environment, specifically utilizing ${skillsText}?`,
-        hint: 'Discuss connection pooling, caching layers (Redis), asynchronous queues, and load balancing.',
-        modelAnswer: 'We leverage horizontal scaling, non-blocking asynchronous event loops, Redis in-memory caching, and Kafka event queues to decouple spike traffic.'
-      },
-      {
-        id: `q_gen_2_${Date.now()}`,
-        role: `${level} ${domain} Engineer`,
-        company: company,
-        type: 'System Design',
-        question: `Design an idempotent payment or event processing microservice for ${company} that guarantees zero duplicate executions under network retries.`,
-        hint: 'Focus on Idempotency Keys stored in Redis with atomic locks and DB transactions.',
-        modelAnswer: 'Each request includes a unique UUID Idempotency-Key. The API checks Redis atomically before execution and commits results in a transactional DB state.'
-      },
-      {
-        id: `q_gen_3_${Date.now()}`,
-        role: `${level} ${domain} Engineer`,
-        company: company,
-        type: 'Behavioral',
-        question: `Tell me about a time when a critical bug occurred in production. How did you diagnose, mitigate, and conduct the post-mortem?`,
-        hint: 'Use the STAR method emphasizing immediate rollback/hotfix, monitoring telemetry, and blameless post-mortem.',
-        modelAnswer: 'Upon receiving high error alerts, I checked Grafana logs, initiated an automated rollback, resolved the root cause in staging, and drafted a blameless post-mortem.'
-      }
-    ];
+    const res = await fetch('/api/ai/generate-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, level, company, resumeSkills })
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to generate questions: ${res.statusText}`);
+    }
+    return res.json();
   }
 
   // 3. Evaluate Coding Solution
@@ -167,38 +132,17 @@ class AIInterviewService {
     companyName: string,
     answers: { questionId: string; userAudioOrText: string; feedback?: any }[]
   ): Promise<InterviewFeedbackReport> {
-    const avgScore = Math.round(
-      (answers || []).reduce((acc, a) => acc + (a.feedback?.score || 85), 0) / ((answers || []).length || 1)
-    );
-
-    return {
-      sessionTitle: sessionTitle,
-      companyName: companyName,
-      overallScore: avgScore,
-      technicalScore: Math.min(100, avgScore + 2),
-      communicationScore: Math.max(70, avgScore - 3),
-      problemSolvingScore: Math.min(100, avgScore + 4),
-      confidenceScore: Math.max(75, avgScore - 1),
-      strengths: [
-        "Strong quantitative STAR results cited in responses",
-        "Clear technical architectural depth and system trade-off understanding",
-        "Structured problem decomposition under timed constraints"
-      ],
-      weaknesses: [
-        "Slight hesitation when articulating memory trade-offs during live coding",
-        "Could expand further on cross-team consensus building"
-      ],
-      improvementSuggestions: [
-        "Practice talking continuously while writing code in live whiteboarding scenarios",
-        "Structure behavioral stories with explicit dollar/percent metric outcomes",
-        "Review Dynamic Programming 2D matrix state transitions"
-      ],
-      recommendedLearningTopics: [
-        "Dynamic Programming (Grid & Knapsack Patterns)",
-        "System Design: Distributed Lock Managers & Redis Redlock",
-        "Amazon Leadership Principle: Dive Deep & Deliver Results"
-      ]
-    };
+    const res = await fetch('/api/ai/generate-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionTitle, companyName, answers })
+    });
+    
+    if (!res.ok) {
+      throw new Error(`Failed to generate report: ${res.statusText}`);
+    }
+    
+    return res.json();
   }
 }
 

@@ -83,19 +83,25 @@ export const AiCoachDrawer: React.FC<AiCoachDrawerProps> = ({ isOpen, onClose, a
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(prev => [...prev, { sender: 'ai', text: data.reply || data.text || "I was unable to evaluate that request right now. Please try asking again." }]);
-      } else {
-        throw new Error(`HTTP Error ${res.status}`);
+      let errorMessage = "I encountered an error contacting the Interview Coach service. Please try again.";
+      if (!res.ok) {
+        try {
+          const errData = await res.json();
+          if (errData.error) {
+            errorMessage = errData.error;
+          }
+        } catch (e) {}
+        throw new Error(errorMessage);
       }
-    } catch (e) {
+      const data = await res.json();
+      setMessages(prev => [...prev, { sender: 'ai', text: data.reply || data.text || "I was unable to evaluate that request right now. Please try asking again." }]);
+    } catch (e: any) {
       console.error("AI Interview Coach Error:", e);
       setMessages(prev => [
         ...prev, 
         { 
           sender: 'ai', 
-          text: "I encountered an error contacting the Interview Coach service. Please try again." 
+          text: e.message || "I encountered an error contacting the Interview Coach service. Please try again." 
         }
       ]);
     } finally {

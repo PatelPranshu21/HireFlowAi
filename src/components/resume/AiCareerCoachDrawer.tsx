@@ -90,13 +90,22 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
             missingKeywords: analysis?.missingKeywords || [],
             matchingKeywords: analysis?.matchingKeywords || [],
             actionableSuggestions: analysis?.actionableSuggestions || [],
-            resumeText: user.rawResumeText || ''
+            resumeText: user.primaryResumeText || user.resumeText || user.rawResumeText || ''
           }
         })
       });
 
+      let errorMessage = "I encountered an error connecting to the AI Resume Coach. Please try again or check your server connection.";
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        try {
+          const errData = await res.json();
+          if (errData.error) {
+            errorMessage = errData.error;
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
@@ -110,7 +119,7 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
       console.error("Coach error:", err);
       const aiMsg: ChatMessage = {
         sender: 'ai',
-        text: "I encountered an error connecting to the AI Resume Coach. Please try again or check your server connection.",
+        text: err.message || "I encountered an error connecting to the AI Resume Coach. Please try again or check your server connection.",
         time: 'Just now'
       };
       setMessages(prev => [...prev, aiMsg]);
