@@ -404,14 +404,25 @@ function MainAppContent() {
         onUploadResumeFile={async (file: File) => {
           let text = '';
           try {
-            text = await file.text();
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve((e.target?.result as string) || '');
+              reader.readAsDataURL(file);
+            });
+            const res = await fetch('/api/ai/parse-resume', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileData: base64, fileName: file.name })
+            });
+            const data = await res.json();
+            text = data.text || data.extractedText || `Resume Content from ${file.name}`;
           } catch (e) {
             text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
           }
           if (!text || text.trim().length === 0) {
             text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
           }
-          uploadResume(text, file.name);
+          await uploadResume(text, file.name);
           updateProfileDetails({ hasUploadedResume: true });
         }}
       />

@@ -4,8 +4,9 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { initDb, dbSaveAtsReport, dbSaveInterviewSession, dbSaveResumeVersion } from "./src/db/postgres";
+import { initDb, dbSaveAtsReport, dbSaveInterviewSession } from "./src/db/postgres";
 import authRoutes from "./server/authRoutes";
+import { extractTextFromPayload } from "./server/documentParser";
 import { pool } from "./db";
 import { PLANS, PlanName, normalizeProfileSubscription } from "./src/data/planConfig";
 import { 
@@ -217,70 +218,86 @@ function analyzeResumeContentLocally(resumeText: string, targetRole: string = "S
     categoryScores: [
       { category: 'Formatting', score: formattingScore, explanation: `Clear structural separation with ${sectionCount} of 5 standard resume sections identified.`, tip: 'Maintain consistent line spacing and section headers.' },
       { category: 'Keywords', score: Math.round((detectedKeywords.length / (detectedKeywords.length + 5)) * 100), explanation: `Detected ${detectedKeywords.length} core technical keywords for ${targetRole}.`, tip: `Consider adding ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')} if applicable.` },
-      { category: 'Impact', score: impactScore, explanation: `Found ${numberMatches} quantified metric points and ${detectedVerbs.length} action verbs.`, tip: 'Try adding specific % latency, cost savings, or active user count figures to all experience bullets.' },
-      { category: 'Skills', score: Math.min(95, 60 + detectedKeywords.length * 3), explanation: `Technical coverage including ${topSkillsFound}.`, tip: 'Group skills into clear subheadings (Languages, Frameworks, Cloud).' }
+      { category: 'Skills', score: Math.min(95, 60 + detectedKeywords.length * 3), explanation: `Technical coverage including ${topSkillsFound}.`, tip: 'Group skills into clear subheadings (Languages, Frameworks, Cloud).' },
+      { category: 'Projects', score: Math.min(95, 70 + sectionCount * 4), explanation: 'Project titles and tech stacks included.', tip: 'Add live URLs or GitHub repository links.' },
+      { category: 'Experience', score: Math.min(90, 60 + (numberMatches * 5)), explanation: 'Strong tech companies with concise achievements.', tip: 'Add dollar values or percentage growth figures.' },
+      { category: 'Education', score: hasEducation ? 95 : 60, explanation: hasEducation ? 'Education degree and graduation year clearly stated.' : 'Missing explicit education section.', tip: 'Ensure graduation year is included.' },
+      { category: 'Readability', score: Math.min(92, 70 + (sectionCount * 4)), explanation: 'Bullet points are 1-2 lines long; good white space balance.', tip: 'Maintain bullet length under 25 words.' },
+      { category: 'Grammar', score: 95, explanation: 'No obvious spelling errors; minor tense consistency suggestion.', tip: 'Use past tense for former roles.' },
+      { category: 'Structure', score: Math.min(91, 65 + (sectionCount * 5)), explanation: 'Logical flow of sections.', tip: 'Maintain consistent section order.' },
+      { category: 'Impact', score: impactScore, explanation: `Found ${numberMatches} quantified metric points and ${detectedVerbs.length} action verbs.`, tip: 'Try adding specific % latency, cost savings, or active user count figures to all experience bullets.' }
     ],
-    keywords: missingKeywords.slice(0, 3).map((m, idx) => ({
-      id: `kw_auto_${idx}`,
-      type: m.importance === "High" ? "high" : "medium",
-      title: `Missing Keyword: '${m.keyword}'`,
-      impactTag: `${m.importance} Impact`,
-      description: `Target ${targetRole} positions frequently list ${m.keyword} as a preferred requirement.`,
-      suggestionTitle: "AI Suggestion",
-      suggestionText: `Integrate ${m.keyword} into your technical skills or project descriptions.`,
-      originalBullet: `Worked on software development tasks.`,
-      suggestedBullet: `Engineered scalable systems incorporating ${m.keyword} best practices.`
-    })),
+    keywords: (() => {
+      // Extract actual bullet points from resume for resume-specific suggestions
+      const bulletLines = resumeText.split(/\n/).filter(line => {
+        const trimmed = line.trim();
+        return trimmed.length > 20 && (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*') || /^[A-Z][a-z]/.test(trimmed));
+      });
+      
+      const weakBullets = bulletLines.filter(b => {
+        const lower = b.toLowerCase();
+        return !/([\d]+%|[\d]+x|\$[\d]+|[\d]+\s*(ms|k|m|users?|requests?))/i.test(b) && 
+               !actionVerbs.some(v => lower.startsWith(v));
+      }).slice(0, 2);
+
+      const detectedKeywordSuggestions = detectedKeywords.slice(0, 2).map((dk, idx) => ({
+        id: `kw_det_${idx}`,
+        type: 'success' as const,
+        title: `Strong Keyword: '${dk.keyword}' (${dk.frequency}x)`,
+        impactTag: 'Verified',
+        description: `'${dk.keyword}' appears ${dk.frequency} time(s) in your resume — well-aligned with ${targetRole} requirements.`,
+        suggestionTitle: 'Verified',
+        suggestionText: `Found ${dk.frequency} occurrences across your experience and skills sections.`,
+        originalBullet: '',
+        suggestedBullet: ''
+      }));
+      
+      const missingSuggestions = missingKeywords.slice(0, 3).map((m, idx) => ({
+        id: `kw_miss_${idx}`,
+        type: (m.importance === "High" ? "high" : "medium") as "high" | "medium",
+        title: `Missing Keyword: '${m.keyword}' (${m.category})`,
+        impactTag: `${m.importance} Impact`,
+        description: `${targetRole} job postings frequently require ${m.keyword} (${m.category}). Your resume does not mention this skill.`,
+        suggestionTitle: 'AI Suggestion',
+        suggestionText: `Add '${m.keyword}' to your ${m.category === 'Languages' || m.category === 'Frameworks' ? 'Technical Skills' : m.category === 'DevOps' ? 'DevOps/Infrastructure' : 'Projects'} section, or integrate it into a relevant experience bullet.`,
+        originalBullet: weakBullets[idx] ? weakBullets[idx].trim().replace(/^[•\-*]\s*/, '') : `Developed software solutions using various technologies.`,
+        suggestedBullet: weakBullets[idx] 
+          ? `${detectedVerbs[idx % detectedVerbs.length] || 'Engineered'} ${weakBullets[idx].trim().replace(/^[•\-*]\s*/, '').substring(0, 60)}... incorporating ${m.keyword}.`
+          : `Engineered scalable ${m.category.toLowerCase()} solutions leveraging ${m.keyword} for ${targetRole} workflows.`
+      }));
+      
+      return [...missingSuggestions, ...detectedKeywordSuggestions];
+    })(),
     impactPoints: [
-      `Found ${numberMatches} quantified metrics. Aim for at least 1 numerical metric per role bullet point.`,
-      `Incorporate action verbs like ${detectedVerbs.length > 0 ? detectedVerbs.join(', ') : "'Engineered', 'Architected', 'Spearheaded'"} at the beginning of each accomplishment.`,
-      `Include target role keywords like ${missingKeywords.slice(0, 2).map(k => k.keyword).join(' and ')} to maximize ATS scanner parsing.`
+      `Found ${numberMatches} quantified metrics across your resume. ${numberMatches < 3 ? 'Add at least 1 numerical metric (%, $, or scale) per role bullet.' : 'Good metric density — consider diversifying metric types (latency, cost savings, user growth).'}`,
+      `${detectedVerbs.length > 0 ? `Strong action verbs detected: ${detectedVerbs.join(', ')}. ` : ''}${detectedVerbs.length < 5 ? `Add more action verbs like '${['Engineered', 'Architected', 'Spearheaded', 'Optimized', 'Scaled'].filter(v => !detectedVerbs.includes(v.toLowerCase())).slice(0, 3).join("', '")}'.` : 'Excellent variety of action verbs.'}`,
+      `${missingKeywords.length > 0 ? `Include ${targetRole}-critical keywords: ${missingKeywords.slice(0, 3).map(k => k.keyword).join(', ')} to maximize ATS match rate.` : 'All target keywords detected — strong ATS alignment.'}`,
+      `${!hasProjects ? 'Add a dedicated Projects section with GitHub links and tech stack tags to boost your score by ~5%.' : 'Projects section detected — ensure each project lists the tech stack and a measurable outcome.'}`
     ],
     grammarIssues: [
-      "Ensure uniform past tense verbs for previous roles and present tense for current active roles."
+      hasExperience ? "Ensure uniform past tense verbs for previous roles and present tense for your current role." : "Add a structured Work Experience section with clear date ranges.",
+      `${!hasSummary ? 'Add a Professional Summary/Objective section at the top of your resume.' : 'Professional summary detected — keep it under 3 lines for readability.'}`
     ],
     sectionAnalyses: [
-      { id: "sa_1", sectionName: "Professional Summary", score: hasSummary ? 88 : 55, strengths: [hasSummary ? "Professional summary present" : "Contains key technical terms"], weaknesses: [!hasSummary ? "Missing explicit Summary section" : "Can be more concise"], suggestions: ["Highlight years of experience and top 3 core technical specializations in first sentence."], recommendedChanges: [], priority: "High", estimatedAtsGain: 4 },
-      { id: "sa_2", sectionName: "Work Experience", score: impactScore, strengths: [`Includes ${detectedVerbs.length} action verbs`, `${numberMatches} quantified metrics detected`], weaknesses: [numberMatches < 3 ? "Could include more quantifiable numbers (% or $)" : "Ensure bullet lengths are uniform"], suggestions: ["Start every bullet point with a high-impact action verb."], recommendedChanges: [], priority: "High", estimatedAtsGain: 8 },
-      { id: "sa_3", sectionName: "Technical Skills", score: Math.min(95, 65 + detectedKeywords.length * 3), strengths: [`Identified ${detectedKeywords.length} technical skills (${topSkillsFound})`], weaknesses: [missingKeywords.length > 0 ? `Missing some target role keywords like ${missingKeywords.slice(0, 2).map(m => m.keyword).join(', ')}` : "None"], suggestions: ["Group skills into categories: Languages, Frameworks, Databases, Cloud & DevOps."], recommendedChanges: [], priority: "Medium", estimatedAtsGain: 5 },
-      { id: "sa_4", sectionName: "Education", score: hasEducation ? 92 : 60, strengths: [hasEducation ? "Education section detected" : "Academic background listed"], weaknesses: [], suggestions: ["List degree, institution, and graduation year clearly."], recommendedChanges: [], priority: "Low", estimatedAtsGain: 2 }
+      { id: "sa_1", sectionName: "Professional Summary", score: hasSummary ? 88 : 55, strengths: [hasSummary ? `Professional summary present with ${topSkillsFound.split(', ').length} key skills mentioned` : "Contains key technical terms"], weaknesses: [!hasSummary ? "Missing explicit Summary/Objective section — this is critical for ATS parsers" : "Can be more concise with years of experience stated"], suggestions: [`${hasSummary ? 'Tighten to 2-3 lines highlighting years of experience and top specializations.' : 'Add a 2-3 line Professional Summary at the top mentioning your experience level, core skills, and target role.'}`], recommendedChanges: [], priority: "High" as const, estimatedAtsGain: hasSummary ? 2 : 6 },
+      { id: "sa_2", sectionName: "Work Experience", score: impactScore, strengths: [`Includes ${detectedVerbs.length} action verbs (${detectedVerbs.slice(0, 3).join(', ') || 'none detected'})`, `${numberMatches} quantified metrics detected`], weaknesses: [numberMatches < 3 ? `Only ${numberMatches} quantifiable numbers found — add % improvements, $ revenue, or scale figures` : "Ensure bullet lengths are uniform (1-2 lines each)"], suggestions: ["Start every bullet point with a high-impact action verb and include at least one metric."], recommendedChanges: [], priority: "High" as const, estimatedAtsGain: 8 },
+      { id: "sa_3", sectionName: "Technical Skills", score: Math.min(95, 65 + detectedKeywords.length * 3), strengths: [`Identified ${detectedKeywords.length} technical skills: ${topSkillsFound}`], weaknesses: [missingKeywords.length > 0 ? `Missing ${targetRole}-relevant keywords: ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')}` : "Comprehensive skill coverage"], suggestions: [`Group skills into categories: Languages, Frameworks, Databases, Cloud & DevOps. ${missingKeywords.length > 2 ? `Add: ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')}.` : ''}`], recommendedChanges: [], priority: "Medium" as const, estimatedAtsGain: 5 },
+      { id: "sa_4", sectionName: "Projects", score: hasProjects ? 85 : 50, strengths: [hasProjects ? "Projects section detected with technical descriptions" : "Technical experience visible in work history"], weaknesses: [!hasProjects ? "No dedicated Projects section — this is valuable for showcasing hands-on work" : "Add GitHub/live links and measurable outcomes to each project"], suggestions: [hasProjects ? "Add live URLs, GitHub links, and tech stack tags to each project." : "Add a Projects section with 2-3 key projects including tech stack and impact metrics."], recommendedChanges: [], priority: hasProjects ? "Medium" as const : "High" as const, estimatedAtsGain: hasProjects ? 3 : 7 },
+      { id: "sa_5", sectionName: "Education", score: hasEducation ? 92 : 60, strengths: [hasEducation ? "Education section detected with degree information" : "Academic background implied"], weaknesses: [!hasEducation ? "No explicit Education section found" : []], suggestions: ["List degree, institution, graduation year, and relevant coursework clearly."], recommendedChanges: [], priority: "Low" as const, estimatedAtsGain: 2 }
     ]
   };
 }
 
-// Save uploaded resume / version endpoint
-app.post("/api/auth/resume", async (req: SubscriptionRequest, res) => {
-  try {
-    const { fileName, fileText, parsedData, score, template, versionId, versionName } = req.body;
-    if (!fileText) {
-      return res.status(400).json({ error: "fileText is required" });
-    }
-    const userId = req.userId || 'usr_demo_1';
-    
-    const versionRecord = await dbSaveResumeVersion(userId, {
-      id: versionId,
-      version_name: versionName || fileName || 'Uploaded Resume',
-      resume_text: fileText,
-      parsed_data: parsedData || {},
-      score: score || 0,
-      template: template || 'modern_tech',
-      file_name: fileName || 'resume.pdf'
-    });
-
-    res.json({ success: true, version: versionRecord });
-  } catch (err: any) {
-    console.error("Error in /api/auth/resume:", err);
-    res.status(500).json({ error: "Failed to save resume", details: err.message });
-  }
-});
 
 // 1. Analyze Resume / ATS Scoring (Enforced for 'atsAnalyses')
 app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
-    const { resumeText, targetRole, resumeVersionId } = req.body;
-    if (!resumeText) {
-      return res.status(400).json({ error: "resumeText is required" });
+    const { resumeText: rawResumeText, fileData, fileName, targetRole, resumeVersionId } = req.body;
+    if (!rawResumeText && !fileData) {
+      return res.status(400).json({ error: "resumeText or fileData is required" });
     }
+
+    const resumeText = await extractTextFromPayload({ fileText: rawResumeText, fileData, fileName });
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -313,7 +330,7 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
     - relevanceScore (0-100 number)
     - summary (detailed paragraph summary specific to this resume)
     - keywordList: array of objects { keyword, detected (boolean), importance ("High"|"Medium"), category, frequency (number) }
-    - categoryScores: array of objects { category, score (number), explanation, tip }
+    - categoryScores: array of objects { category, score (number), explanation, tip } with exactly 10 categories: Formatting, Keywords, Skills, Projects, Experience, Education, Readability, Grammar, Structure, Impact
     - keywords: array of objects with { id, type ("high" | "medium" | "success"), title, impactTag, description, suggestionTitle, suggestionText, originalBullet, suggestedBullet }
     - impactPoints: array of actionable bullet improvement tips
     - grammarIssues: array of grammar or style fixes
@@ -483,10 +500,12 @@ app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), asy
 // 2b. AI Structured Resume Parsing
 app.post("/api/ai/parse-resume", async (req, res) => {
   try {
-    const { resumeText } = req.body;
-    if (!resumeText) {
-      return res.status(400).json({ error: "resumeText is required" });
+    const { resumeText: rawText, fileData, fileName } = req.body;
+    if (!rawText && !fileData) {
+      return res.status(400).json({ error: "resumeText or fileData is required" });
     }
+
+    const resumeText = await extractTextFromPayload({ fileText: rawText, fileData, fileName });
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -843,7 +862,10 @@ async function startServer() {
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);

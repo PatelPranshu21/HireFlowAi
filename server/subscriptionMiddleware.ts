@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 import { PLANS, FeatureKey, checkEntitlement, normalizeProfileSubscription } from '../src/data/planConfig';
 
-const JWT_SECRET = process.env.SESSION_SECRET || 'hireflow-dev-secret-change-me';
+const JWT_SECRET = process.env.SESSION_SECRET || 'hireflow_super_secret_jwt_key_2026';
 
 export interface SubscriptionRequest extends Request {
   userProfile?: any;
@@ -25,7 +25,7 @@ export async function resolveUserProfile(req: SubscriptionRequest): Promise<any>
   if (token) {
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      userId = decoded.id;
+      userId = decoded.userId;
     } catch (e) {}
   }
 

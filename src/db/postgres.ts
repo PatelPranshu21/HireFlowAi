@@ -367,6 +367,63 @@ export async function dbFindUserByProvider(provider: string, providerId: string)
   }
 }
 
+export function sanitizePgString(str: any): string {
+  if (str === null || str === undefined) return '';
+  if (typeof str !== 'string') {
+    str = String(str);
+  }
+  return str
+    .replace(/\u0000/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\\u0000/g, '');
+}
+
+export function sanitizePgJson<T = any>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return {} as T;
+  }
+
+  if (typeof obj === 'string') {
+    if (obj.startsWith('PK\x03\x04') || obj.startsWith('%PDF-') || obj.startsWith('PK\u0003\u0004')) {
+      return '' as unknown as T;
+    }
+    return sanitizePgString(obj) as unknown as T;
+  }
+
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+
+  if (Buffer.isBuffer(obj) || obj instanceof Uint8Array || obj instanceof ArrayBuffer) {
+    return {} as T;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizePgJson(item)) as unknown as T;
+  }
+
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val && (Buffer.isBuffer(val) || val instanceof Uint8Array || val instanceof ArrayBuffer)) {
+      continue;
+    }
+
+    if (key === 'content' || key === 'resumeText' || key === 'fileText') {
+      if (typeof val === 'string' && (val.startsWith('PK\x03\x04') || val.startsWith('%PDF-') || val.startsWith('PK\u0003\u0004'))) {
+        continue;
+      }
+    }
+
+    if (typeof val === 'string') {
+      cleaned[key] = sanitizePgString(val);
+    } else {
+      cleaned[key] = sanitizePgJson(val);
+    }
+  }
+
+  return cleaned as T;
+}
+
 export async function dbCreateUser(data: {
   id: string;
   email: string;
@@ -382,8 +439,10 @@ export async function dbCreateUser(data: {
   if (!p || !isPostgresAvailable) return null;
 
   try {
-    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanEmail = sanitizePgString(data.email.trim().toLowerCase());
     const now = new Date();
+    const cleanProfile = sanitizePgJson(data.profile_data || {});
+
     const res = await p.query(
       `INSERT INTO users (
         id, email, first_name, last_name, password_hash, auth_provider, provider_id, onboarding_completed, profile_data, created_at, updated_at
@@ -392,13 +451,13 @@ export async function dbCreateUser(data: {
       [
         data.id,
         cleanEmail,
-        data.first_name || null,
-        data.last_name || null,
+        data.first_name ? sanitizePgString(data.first_name) : null,
+        data.last_name ? sanitizePgString(data.last_name) : null,
         data.password_hash || null,
         data.auth_provider || 'email',
         data.provider_id || null,
         data.onboarding_completed || false,
-        JSON.stringify(data.profile_data || {}),
+        JSON.stringify(cleanProfile),
         now,
         now
       ]
@@ -431,8 +490,29 @@ export async function dbUpdateUserProfile(
 
     const mergedProfile = {
       ...(existing.profile_data || {}),
-      ...profileData
+      ...(profileData || {})
     };
+
+    // Remove raw binary string/buffer entries from profile data
+    delete mergedProfile.content;
+    if (mergedProfile.resumeVersions && Array.isArray(mergedProfile.resumeVersions)) {
+      mergedProfile.resumeVersions = mergedProfile.resumeVersions.map((v: any) => {
+        const copy = { ...v };
+        if (typeof copy.content === 'string' && (copy.content.startsWith('PK\x03\x04') || copy.content.startsWith('%PDF-') || copy.content.startsWith('PK\u0003\u0004'))) {
+          delete copy.content;
+        }
+        if (typeof copy.resumeText === 'string' && (copy.resumeText.startsWith('PK\x03\x04') || copy.resumeText.startsWith('%PDF-') || copy.resumeText.startsWith('PK\u0003\u0004'))) {
+          delete copy.resumeText;
+        }
+        return sanitizePgJson(copy);
+      });
+    }
+
+    if (typeof mergedProfile.resumeText === 'string' && (mergedProfile.resumeText.startsWith('PK\x03\x04') || mergedProfile.resumeText.startsWith('%PDF-') || mergedProfile.resumeText.startsWith('PK\u0003\u0004'))) {
+      delete mergedProfile.resumeText;
+    }
+
+    const cleanMergedProfile = sanitizePgJson(mergedProfile);
 
     const onboardingCompleted =
       additionalUpdates?.onboarding_completed !== undefined
@@ -454,14 +534,14 @@ export async function dbUpdateUserProfile(
       }
     }
 
-    const firstName = extractedFirstName || existing.first_name;
-    const lastName = extractedLastName || existing.last_name;
-    const fullName = `${firstName || ''} ${lastName || ''}`.trim();
+    const firstName = sanitizePgString(extractedFirstName || existing.first_name || '');
+    const lastName = sanitizePgString(extractedLastName || existing.last_name || '');
+    const fullName = `${firstName} ${lastName}`.trim();
 
     if (fullName) {
-      mergedProfile.name = fullName;
+      cleanMergedProfile.name = fullName;
     }
-    mergedProfile.hasCompletedOnboarding = onboardingCompleted;
+    cleanMergedProfile.hasCompletedOnboarding = onboardingCompleted;
     const authProvider = additionalUpdates?.auth_provider || existing.auth_provider;
     const providerId = additionalUpdates?.provider_id || existing.provider_id;
 
@@ -478,9 +558,9 @@ export async function dbUpdateUserProfile(
        WHERE id = $9
        RETURNING *`,
       [
-        JSON.stringify(mergedProfile),
-        firstName,
-        lastName,
+        JSON.stringify(cleanMergedProfile),
+        firstName || null,
+        lastName || null,
         onboardingCompleted,
         onboardingCompletedAt,
         authProvider,
@@ -515,6 +595,11 @@ export async function dbSaveResume(userId: string, resume: {
   if (!p || !isPostgresAvailable) return null;
   try {
     const id = resume.id || `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const cleanText = sanitizePgString(resume.resume_text || '');
+    const cleanParsed = sanitizePgJson(resume.parsed_data || {});
+    const cleanFileName = sanitizePgString(resume.file_name || 'Resume.pdf');
+    const cleanVersionName = sanitizePgString(resume.version_name || cleanFileName);
+
     const res = await p.query(
       `INSERT INTO resumes (id, user_id, file_name, file_type, file_size, file_url, resume_text, parsed_data, is_primary, ats_score, version_name, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
@@ -532,15 +617,15 @@ export async function dbSaveResume(userId: string, resume: {
       [
         id,
         userId,
-        resume.file_name,
+        cleanFileName,
         resume.file_type || 'PDF',
         resume.file_size || '180 KB',
         resume.file_url || null,
-        resume.resume_text,
-        JSON.stringify(resume.parsed_data || {}),
+        cleanText,
+        JSON.stringify(cleanParsed),
         resume.is_primary !== undefined ? resume.is_primary : true,
         resume.ats_score || 0,
-        resume.version_name || resume.file_name
+        cleanVersionName
       ]
     );
     return res.rows[0];
@@ -580,6 +665,11 @@ export async function dbSaveResumeVersion(userId: string, version: {
   if (!p || !isPostgresAvailable) return null;
   try {
     const id = version.id || `v_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const cleanText = sanitizePgString(version.resume_text || '');
+    const cleanParsed = sanitizePgJson(version.parsed_data || {});
+    const cleanVersionName = sanitizePgString(version.version_name || 'Resume Version');
+    const cleanFileName = sanitizePgString(version.file_name || cleanVersionName);
+
     const res = await p.query(
       `INSERT INTO resume_versions (
         id, resume_id, user_id, version_name, version_number, resume_text, parsed_data, score, template, jobs_matched_count, file_name, uploaded_at, file_size, updated_at
@@ -596,14 +686,14 @@ export async function dbSaveResumeVersion(userId: string, version: {
         id,
         version.resume_id || null,
         userId,
-        version.version_name,
+        cleanVersionName,
         version.version_number || 1,
-        version.resume_text,
-        JSON.stringify(version.parsed_data || {}),
+        cleanText,
+        JSON.stringify(cleanParsed),
         version.score || 0,
         version.template || 'modern_tech',
         version.jobs_matched_count || 0,
-        version.file_name || version.version_name,
+        cleanFileName,
         version.uploaded_at || new Date().toISOString(),
         version.file_size || '180 KB'
       ]

@@ -110,8 +110,7 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const rawText = (evt.target?.result as string) || '';
-      setUploadedFileText(rawText);
+      const base64Data = (evt.target?.result as string) || '';
       setUploadProgress(40);
 
       try {
@@ -121,9 +120,11 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
         const res = await fetch('/api/ai/parse-resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resumeText: rawText || file.name })
+          body: JSON.stringify({ fileData: base64Data, fileName: file.name })
         });
         const data = await res.json();
+        const extractedText = data.text || data.extractedText || `Resume Content from ${file.name}`;
+        setUploadedFileText(extractedText);
         
         setUploadProgress(85);
         await new Promise(r => setTimeout(r, 400));
@@ -167,7 +168,7 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
       }
     };
 
-    reader.readAsText(file);
+    reader.readAsDataURL(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {

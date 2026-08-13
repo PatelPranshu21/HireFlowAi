@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+
 import { useAuth } from './AuthContext';
 import {
   CentralCareerProfile,
@@ -48,7 +49,7 @@ interface EcosystemContextType {
   addNotification: (notif: { title: string; message: string; type?: 'info' | 'success' | 'warning' | 'alert' }) => void;
   calendarEvents: CalendarEvent[];
   setCalendarEvents: React.Dispatch<React.SetStateAction<CalendarEvent[]>>;
-  
+
   // Productivity & Collaboration State
   prodTasks: ProductivityTask[];
   setProdTasks: React.Dispatch<React.SetStateAction<ProductivityTask[]>>;
@@ -210,27 +211,50 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         }
       }
 
-      if (dbData.user && dbData.user.profile_data) {
-        const pData = dbData.user.profile_data;
-        if (dbData.resumes && dbData.resumes.length > 0) {
-          pData.resumeText = dbData.resumes[0].resume_text || pData.resumeText;
-        }
-        if (dbData.resumeVersions && dbData.resumeVersions.length > 0) {
-          pData.resumeVersions = dbData.resumeVersions.map((v: any) => ({
+      if (dbData.user) {
+        const pData = dbData.user.profile_data || {};
+        const pgResumes = dbData.resumes || [];
+        const pgVersions = dbData.resumeVersions || [];
+
+        if (pgVersions.length > 0) {
+          pData.resumeVersions = pgVersions.map((v: any) => ({
             id: v.id,
             versionName: v.version_name,
             fileName: v.file_name || v.version_name,
             uploadedAt: v.uploaded_at || 'Saved',
             fileSize: v.file_size || '180 KB',
-            score: v.score || 85,
+            score: v.score ?? 0,
             template: v.template || 'modern_tech',
             parsedData: v.parsed_data || {},
             jobsMatchedCount: v.jobs_matched_count || 16,
             content: v.resume_text,
             resumeText: v.resume_text
           }));
+          pData.resumeText = pData.resumeVersions[0].resumeText || pData.resumeText;
+          setActiveResumeVersionId(pData.resumeVersions[0].id);
+        } else if (pgResumes.length > 0) {
+          pData.resumeVersions = pgResumes.map((r: any) => ({
+            id: r.id,
+            versionName: r.version_name || r.file_name || 'Master Resume',
+            fileName: r.file_name || 'Resume.pdf',
+            uploadedAt: 'Saved',
+            fileSize: r.file_size || '180 KB',
+            score: r.ats_score ?? 0,
+            template: 'modern_tech',
+            parsedData: r.parsed_data || {},
+            jobsMatchedCount: 16,
+            content: r.resume_text,
+            resumeText: r.resume_text
+          }));
+          pData.resumeText = pData.resumeVersions[0].resumeText || pData.resumeText;
           setActiveResumeVersionId(pData.resumeVersions[0].id);
         }
+
+        // Restore saved job IDs from database
+        if (dbData.savedJobs && dbData.savedJobs.length > 0) {
+          pData.savedJobIds = dbData.savedJobs;
+        }
+
         authUpdateProfile(pData);
       }
 
@@ -399,7 +423,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     // 2. Perform dynamic AI resume analysis
     let analysisResult: ResumeAnalysisResult | null = null;
     try {
-      analysisResult = await AiProviderService.analyzeResume(fileText, profile.targetRole || "Software Engineer");
+      analysisResult = await AiProviderService.analyzeResume(fileText, profile.targetRole || "Software Engineer", newVersionId);
     } catch (err) {
       console.error("Analysis call failed:", err);
     }
@@ -461,7 +485,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
     let analysisResult: ResumeAnalysisResult | null = null;
     try {
-      analysisResult = await AiProviderService.analyzeResume(version.resumeText || version.content || '', profile.targetRole || "Software Engineer");
+      analysisResult = await AiProviderService.analyzeResume(version.resumeText || version.content || '', profile.targetRole || "Software Engineer", version.id);
     } catch (err) {
       console.error("Error analyzing version on switch:", err);
     }
@@ -573,6 +597,9 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       AiMemoryService.recordJobInteraction('reject', { title: job.title, company: job.company });
     }
 
+    // Persist rejected/hidden job to database
+    UserService.saveSavedJobApi(jobId, 'remove');
+
     setProfile(prev => ({
       ...prev,
       hiddenJobIds: Array.from(new Set([...(prev.hiddenJobIds || []), jobId]))
@@ -629,6 +656,12 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setNotifications(result.updatedNotifications);
     setActivities(result.updatedActivities);
 
+    // Persist updated profile with new certification to database
+    UserService.updateProfileApi({
+      certifications: result.updatedProfile.certifications,
+      certificationsEarned: result.updatedProfile.certificationsEarned
+    } as any);
+
     if (result.newCoachMessage) {
       setCoachMessages(prev => [result.newCoachMessage!, ...prev]);
     }
@@ -640,6 +673,9 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       merged.analytics = EmployabilityScoreService.calculateScores(merged);
       return merged;
     });
+
+    // Persist profile updates to PostgreSQL database
+    UserService.updateProfileApi(updated as any);
   };
 
   const addCalendarEvent = (event: Omit<CalendarEvent, 'id'>) => {

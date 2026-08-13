@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { extractTextFromPayload, sanitizePgJson } from './documentParser';
 import {
   initDb,
   dbFindUserByEmail,
@@ -860,25 +861,28 @@ router.post('/resume', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { fileName, fileText, parsedData, score, template } = req.body;
-    if (!fileText && !fileName) {
-      return res.status(400).json({ error: 'fileName and fileText required' });
+    const { fileName, fileText, fileData, parsedData, score, template } = req.body;
+    if (!fileText && !fileName && !fileData) {
+      return res.status(400).json({ error: 'fileName and fileText/fileData required' });
     }
+
+    const cleanText = await extractTextFromPayload({ fileText, fileData, fileName });
+    const cleanParsedData = sanitizePgJson(parsedData || {});
 
     const savedResume = await dbSaveResume(userId, {
       file_name: fileName || 'Resume.pdf',
-      resume_text: fileText || '',
-      parsed_data: parsedData,
-      ats_score: score || 85,
+      resume_text: cleanText,
+      parsed_data: cleanParsedData,
+      ats_score: score || 0,
       version_name: fileName || 'Master Resume'
     });
 
     const savedVersion = await dbSaveResumeVersion(userId, {
       resume_id: savedResume?.id,
       version_name: fileName || 'Master Resume',
-      resume_text: fileText || '',
-      parsed_data: parsedData,
-      score: score || 85,
+      resume_text: cleanText,
+      parsed_data: cleanParsedData,
+      score: score || 0,
       template: template || 'modern_tech',
       file_name: fileName || 'Resume.pdf',
       uploaded_at: new Date().toISOString()
@@ -895,18 +899,18 @@ router.post('/resume', async (req: Request, res: Response) => {
         fileName: fileName || 'Resume.pdf',
         uploadedAt: 'Just now',
         fileSize: '184 KB',
-        score: score || 85,
+        score: score || 0,
         template: template || 'modern_tech',
-        parsedData: parsedData,
+        parsedData: cleanParsedData,
         jobsMatchedCount: 16,
-        content: fileText
+        content: cleanText
       };
       const updatedVersions = [newVer, ...existingVersions.filter((v: any) => v.id !== newVer.id)];
       const updatedProfile = {
         ...existingProfile,
-        resumeText: fileText,
+        resumeText: cleanText,
         resumeVersions: updatedVersions,
-        atsScore: score || existingProfile.atsScore || 85
+        atsScore: score || existingProfile.atsScore || 0
       };
       await dbUpdateUserProfile(userId, updatedProfile);
     }
@@ -914,7 +918,8 @@ router.post('/resume', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       resume: savedResume,
-      version: savedVersion
+      version: savedVersion,
+      extractedText: cleanText
     });
   } catch (err: any) {
     console.error('Error in POST /api/auth/resume:', err);

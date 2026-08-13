@@ -51,12 +51,12 @@ export class AiProviderService {
   /**
    * Analyzes resume text against target role
    */
-  public static async analyzeResume(resumeText: string, targetRole: string) {
+  public static async analyzeResume(resumeText: string, targetRole: string, resumeVersionId?: string) {
     try {
       const res = await fetch('/api/ai/analyze-resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeText, targetRole, providerConfig: this.config })
+        body: JSON.stringify({ resumeText, targetRole, resumeVersionId, providerConfig: this.config })
       });
       if (!res.ok) throw new Error('Resume Analysis API error');
       return await res.json();
