@@ -366,7 +366,7 @@ export const CareerToolsView: React.FC<CareerToolsViewProps> = ({
                   <h4 className="text-base font-bold font-geist text-white">Full Stack Developer</h4>
                   <p className="text-xs font-mono text-[#a1a3b8]">Verified Skills: React 19, TypeScript, Express, PostgreSQL, Node.js</p>
                   <div className="pt-2 border-t border-[#434656]/30 text-xs font-mono text-green-300">
-                    ATS Score: {user.atsScore || 85}/100 • Benchmark Reached
+                    ATS Score: {user.atsScore || 0}/100 • Benchmark Reached
                   </div>
                 </div>
 

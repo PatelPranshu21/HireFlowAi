@@ -35,7 +35,7 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       sender: 'ai',
-      text: `Hello ${user.name || 'there'}! I am your HireFlow AI Resume Coach. I've analyzed your ${user.targetRole || 'Software Engineer'} resume. Your current ATS score is ${analysis?.overallScore || analysis?.atsScore || 82}/100. How can I help optimize your resume today?`,
+      text: `Hello ${user.name || 'there'}! I am your HireFlow AI Resume Coach. I've analyzed your ${user.targetRole || 'Software Engineer'} resume. Your current ATS score is ${analysis?.overallScore || analysis?.atsScore || 0}/100. How can I help optimize your resume today?`,
       time: 'Just now'
     }
   ]);
@@ -79,11 +79,11 @@ export const AiCareerCoachDrawer: React.FC<AiCareerCoachDrawerProps> = ({
               skills: user.skills,
               experienceLevel: user.experienceLevel
             },
-            atsScore: analysis?.atsScore || analysis?.overallScore || 82,
-            formattingScore: analysis?.formattingScore || 90,
-            impactScore: analysis?.impactScore || 75,
-            relevanceScore: analysis?.relevanceScore || 80,
-            overallScore: analysis?.overallScore || 82,
+            atsScore: analysis?.atsScore || analysis?.overallScore || 0,
+            formattingScore: analysis?.formattingScore || 0,
+            impactScore: analysis?.impactScore || 0,
+            relevanceScore: analysis?.relevanceScore || 0,
+            overallScore: analysis?.overallScore || 0,
             summaryReport: analysis?.summary || '',
             keyStrengths: analysis?.keyStrengths || [],
             criticalGaps: analysis?.criticalGaps || [],

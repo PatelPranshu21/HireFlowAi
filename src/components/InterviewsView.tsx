@@ -86,7 +86,7 @@ export const InterviewsView: React.FC<InterviewsViewProps> = ({
           ...user.interviewMetrics,
           completedSessionsCount: newCount,
           studyHours: (user.interviewMetrics?.studyHours || 0) + 0.5,
-          mockScoreOverall: report.overallScore || 85
+          mockScoreOverall: report.overallScore || 0
         }
       });
     }

@@ -1412,7 +1412,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
           if (onUploadResume) {
             onUploadResume(fileText, fileName);
           } else if (onUpdateUser) {
-            onUpdateUser({ atsScore: 85, resumeText: fileText });
+            onUpdateUser({ atsScore: user.atsScore || 0, resumeText: fileText });
           }
           setIsUploadModalOpen(false);
           showToast(`Resume "${fileName}" uploaded & analyzed! Job recommendations unlocked.`);

@@ -60,7 +60,7 @@ export class AiMemoryService {
     const targetRoleLower = (profile.targetRole || '').toLowerCase();
 
     return jobs.map(job => {
-      let baseScore = job.matchScore || 80;
+      let baseScore = job.matchScore || 0;
 
       // 1. Boost score if user has applied to similar companies or titles
       if (memory.interactedCompanies.includes(job.company)) {

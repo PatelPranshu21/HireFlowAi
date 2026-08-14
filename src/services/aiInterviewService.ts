@@ -52,11 +52,11 @@ class AIInterviewService {
       if (res.ok) {
         const data = await res.json();
         return {
-          score: data.score || 85,
-          confidenceScore: Math.round((data.score || 85) * 0.95),
-          clarityScore: Math.round((data.score || 85) * 0.98),
-          structureScore: Math.round((data.score || 85) * 0.92),
-          professionalismScore: Math.min(100, (data.score || 85) + 3),
+          score: data.score || 0,
+          confidenceScore: Math.round((data.score || 0) * 0.95),
+          clarityScore: Math.round((data.score || 0) * 0.98),
+          structureScore: Math.round((data.score || 0) * 0.92),
+          professionalismScore: Math.min(100, (data.score || 0) + 3),
           starBreakdown: data.starBreakdown || {
             situation: "Described production operational issue clearly.",
             task: "Defined sub-100ms response time requirement.",

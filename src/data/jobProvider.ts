@@ -787,7 +787,7 @@ export function calculateDynamicMatchScore(job: JobRecommendation, user: UserPro
   missingSkills: string[];
   reason: string;
 } {
-  let score = job.matchScore || 85;
+  let score = job.matchScore || 0;
   const reqSkills = job.requiredSkills || [];
   const prefs = user.preferences;
 

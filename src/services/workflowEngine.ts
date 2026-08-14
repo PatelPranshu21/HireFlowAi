@@ -39,7 +39,7 @@ export class WorkflowEngine {
     parsedSkills?: string[]
   ): WorkflowResult {
     // 1. Calculate new ATS score & extract skills
-    const newAtsScore = Math.min(98, (profile.atsScore || 85) + 3);
+    const newAtsScore = Math.min(98, (profile.atsScore || 0) + 3);
     const newSkills = Array.from(new Set([
       ...(profile.skills || []),
       ...(parsedSkills || ['System Architecture', 'Microservices', 'Kafka', 'Redis', 'Docker'])

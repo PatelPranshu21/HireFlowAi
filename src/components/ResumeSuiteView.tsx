@@ -54,6 +54,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
     isAnalyzingResume, 
     activeResumeVersionId, 
     switchActiveResumeVersion,
+    deleteResumeVersion,
     uploadResume: ecosystemUploadResume
   } = useEcosystem();
 
@@ -158,8 +159,13 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
     showToast(`Renamed version to "${newName}"`);
   };
 
-  const handleDeleteVersion = (id: string) => {
+  const handleDeleteVersion = async (id: string) => {
     if (versions.length <= 1) return;
+    
+    // Call ecosystem to delete via API and update profile
+    await deleteResumeVersion(id);
+    
+    // Also update local state to reflect the change immediately
     setVersions(prev => prev.filter(v => v.id !== id));
     if (activeVersionId === id) {
       const remaining = versions.filter(v => v.id !== id);

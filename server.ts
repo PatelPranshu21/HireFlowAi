@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 
 import dotenv from "dotenv";
-import { initDb, dbSaveAtsReport, dbSaveInterviewSession } from "./src/db/postgres";
+import { initDb, dbSaveAtsReport, dbSaveInterviewSession, dbUpdateResumeVersionScore } from "./src/db/postgres";
 import authRoutes from "./server/authRoutes";
 import { extractTextFromPayload } from "./server/documentParser";
 import { pool } from "./db";
@@ -343,27 +343,40 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
 
     const resumeText = await extractTextFromPayload({ fileText: rawResumeText, fileData, fileName });
 
-    const prompt = `Analyze the following resume for a target role of "${targetRole || 'Software Engineer'}".
-    Provide a comprehensive, highly realistic ATS scoring analysis in JSON format with:
-    - overallScore (0-100 number derived from actual content)
-    - formattingScore (0-100 number)
-    - impactScore (0-100 number)
-    - relevanceScore (0-100 number)
-    - summary (detailed paragraph summary specific to this resume)
-    - keywordList: array of objects { keyword, detected (boolean), importance ("High"|"Medium"), category, frequency (number) }
-    - categoryScores: array of objects { category, score (number), explanation, tip } with exactly 10 categories: Formatting, Keywords, Skills, Projects, Experience, Education, Readability, Grammar, Structure, Impact
-    - keywords: array of objects with { id, type ("high" | "medium" | "success"), title, impactTag, description, suggestionTitle, suggestionText, originalBullet, suggestedBullet }
-    - impactPoints: array of actionable bullet improvement tips
-    - grammarIssues: array of grammar or style fixes
-    - sectionAnalyses: array of objects { id, sectionName, score, strengths: string[], weaknesses: string[], suggestions: string[], recommendedChanges: string[], priority: "High"|"Medium"|"Low", estimatedAtsGain: number }
-    
-    Resume content:
-    """
-    ${resumeText}
-    """`;
+    let parsed: any = null;
 
-    const responseText = await callGroq(prompt, "", [], true);
-    const parsed = JSON.parse(responseText || "{}");
+    // Try Groq/LLM analysis first
+    try {
+      const prompt = `Analyze the following resume for a target role of "${targetRole || 'Software Engineer'}".
+      Provide a comprehensive, highly realistic ATS scoring analysis in JSON format with:
+      - overallScore (0-100 number derived from actual content)
+      - formattingScore (0-100 number)
+      - impactScore (0-100 number)
+      - relevanceScore (0-100 number)
+      - summary (detailed paragraph summary specific to this resume)
+      - keywordList: array of objects { keyword, detected (boolean), importance ("High"|"Medium"), category, frequency (number) }
+      - categoryScores: array of objects { category, score (number), explanation, tip } with exactly 10 categories: Formatting, Keywords, Skills, Projects, Experience, Education, Readability, Grammar, Structure, Impact
+      - keywords: array of objects with { id, type ("high" | "medium" | "success"), title, impactTag, description, suggestionTitle, suggestionText, originalBullet, suggestedBullet }
+      - impactPoints: array of actionable bullet improvement tips
+      - grammarIssues: array of grammar or style fixes
+      - sectionAnalyses: array of objects { id, sectionName, score, strengths: string[], weaknesses: string[], suggestions: string[], recommendedChanges: string[], priority: "High"|"Medium"|"Low", estimatedAtsGain: number }
+      
+      Resume content:
+      """
+      ${resumeText}
+      """`;
+
+      const responseText = await callGroq(prompt, "", [], true);
+      parsed = JSON.parse(responseText || "{}");
+    } catch (groqErr) {
+      console.warn("Groq analysis failed, using local deterministic analysis:", groqErr);
+    }
+
+    // Fallback: use deterministic local analysis if Groq failed or returned empty
+    if (!parsed || !parsed.overallScore) {
+      console.log('[Resume Analysis] Using deterministic local analysis for resume.');
+      parsed = analyzeResumeContentLocally(resumeText, targetRole || 'Software Engineer');
+    }
     
     if (req.userId && req.userId !== 'usr_guest') {
       await dbSaveAtsReport(req.userId, {
@@ -377,6 +390,11 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
         grammar_issues: parsed.grammarIssues || [],
         analysis_data: parsed
       });
+
+      // Persist score and analysis back to resume_versions table
+      if (resumeVersionId) {
+        await dbUpdateResumeVersionScore(resumeVersionId, parsed.overallScore || 0, parsed);
+      }
     }
     
     await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);

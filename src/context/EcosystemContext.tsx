@@ -81,6 +81,7 @@ interface EcosystemContextType {
   activeResumeVersionId: string;
   isAnalyzingResume: boolean;
   switchActiveResumeVersion: (versionId: string) => Promise<void>;
+  deleteResumeVersion: (versionId: string) => Promise<void>;
 
   // Actions
   uploadResume: (fileText: string, fileName: string, parsedData?: any) => Promise<void>;
@@ -205,10 +206,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       if (!dbData) return;
 
       if (dbData.atsReports && dbData.atsReports.length > 0) {
-        const latestReport = dbData.atsReports[0].analysis_data || dbData.atsReports[0];
-        if (latestReport && latestReport.overallScore) {
-          setCurrentAnalysis(latestReport);
-        }
+        // Don't load the global "latest" report — we'll load per-version analysis below
       }
 
       if (dbData.user) {
@@ -228,10 +226,21 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
             parsedData: v.parsed_data || {},
             jobsMatchedCount: v.jobs_matched_count || 16,
             content: v.resume_text,
-            resumeText: v.resume_text
+            resumeText: v.resume_text,
+            analysisData: v.analysis_data || null
           }));
-          pData.resumeText = pData.resumeVersions[0].resumeText || pData.resumeText;
-          setActiveResumeVersionId(pData.resumeVersions[0].id);
+          const savedActiveId = pData.activeResumeVersionId;
+          const activeVer = pData.resumeVersions.find((v: any) => v.id === savedActiveId) || pData.resumeVersions[0];
+          
+          pData.resumeText = activeVer.resumeText || pData.resumeText;
+          setActiveResumeVersionId(activeVer.id);
+          if (activeVer.analysisData && activeVer.analysisData.overallScore) {
+            setCurrentAnalysis(activeVer.analysisData);
+            pData.atsScore = activeVer.analysisData.overallScore;
+          } else {
+            setCurrentAnalysis(defaultResumeAnalysis);
+            pData.atsScore = activeVer.score || 0;
+          }
         } else if (pgResumes.length > 0) {
           pData.resumeVersions = pgResumes.map((r: any) => ({
             id: r.id,
@@ -244,10 +253,15 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
             parsedData: r.parsed_data || {},
             jobsMatchedCount: 16,
             content: r.resume_text,
-            resumeText: r.resume_text
+            resumeText: r.resume_text,
+            analysisData: null
           }));
-          pData.resumeText = pData.resumeVersions[0].resumeText || pData.resumeText;
-          setActiveResumeVersionId(pData.resumeVersions[0].id);
+          const savedActiveId = pData.activeResumeVersionId;
+          const activeVer = pData.resumeVersions.find((v: any) => v.id === savedActiveId) || pData.resumeVersions[0];
+          
+          pData.resumeText = activeVer.resumeText || pData.resumeText;
+          pData.atsScore = activeVer.score || 0;
+          setActiveResumeVersionId(activeVer.id);
         }
 
         // Restore saved job IDs from database
@@ -283,7 +297,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
           logo: a.company_logo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(a.company)}`,
           location: a.location || 'Remote',
           salary: a.salary || '$120,000 - $160,000',
-          matchScore: a.match_score || 85,
+          matchScore: a.match_score || 0,
           status: a.status || 'applied',
           stage: a.stage || 'Applied',
           appliedDate: a.applied_date || 'Recently'
@@ -443,7 +457,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       resumeText: fileText,
       content: fileText,
       parsedData: parsedData || {},
-      score: analysisResult.overallScore || 85,
+      score: analysisResult.overallScore || 0,
       template: 'modern_tech',
       fileName: fileName,
       fileSize: '184 KB'
@@ -454,7 +468,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
     const updatedProfile: CentralCareerProfile = {
       ...profile,
-      atsScore: analysisResult.overallScore || profile.atsScore || 85,
+      atsScore: analysisResult.overallScore || 0,
       skills: newSkills,
       resumeVersions: updatedVersions,
       primaryResumeText: fileText,
@@ -467,6 +481,14 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setProfile(updatedProfile);
     setRecommendations(newJobRecs);
     setIsAnalyzingResume(false);
+
+    // Persist updated score back to profile's resumeVersions array
+    setProfile(prev => {
+      const updatedVersions = (prev.resumeVersions || []).map(v =>
+        v.id === newVersionId ? { ...v, score: analysisResult!.overallScore || 0, analysisData: analysisResult } : v
+      );
+      return { ...prev, resumeVersions: updatedVersions };
+    });
 
     pushCoachMessage({
       type: 'success',
@@ -483,6 +505,33 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setActiveResumeVersionId(versionId);
     setIsAnalyzingResume(true);
 
+    // Persist active version ID to user profile
+    setProfile(prev => ({
+      ...prev,
+      activeResumeVersionId: versionId
+    }));
+      UserService.updateProfileApi({ activeResumeVersionId: versionId } as any);
+
+    // Check for cached analysis first (from DB analysis_data or previous analysis)
+    const cachedAnalysis = (version as any).analysisData;
+    if (cachedAnalysis && cachedAnalysis.overallScore) {
+      setCurrentAnalysis(cachedAnalysis);
+      const versionSkills = version.parsedData?.skills || cachedAnalysis.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
+
+      setProfile(prev => ({
+        ...prev,
+        atsScore: cachedAnalysis.overallScore || version.score || prev.atsScore,
+        primaryResumeText: version.resumeText || version.content || '',
+        activeResumeVersionId: versionId
+      }));
+
+      const reRecs = getRecommendationsForResume(mockJobsList, version.resumeText || version.content || '', versionSkills, profile.targetRole);
+      setRecommendations(reRecs);
+      setIsAnalyzingResume(false);
+      return;
+    }
+
+    // No cached analysis — run fresh analysis
     let analysisResult: ResumeAnalysisResult | null = null;
     try {
       analysisResult = await AiProviderService.analyzeResume(version.resumeText || version.content || '', profile.targetRole || "Software Engineer", version.id);
@@ -492,19 +541,62 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
     if (analysisResult) {
       setCurrentAnalysis(analysisResult);
-      const versionSkills = version.parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected).map(k => k.keyword) || profile.skills;
+      const versionSkills = version.parsedData?.skills || analysisResult.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
 
-      setProfile(prev => ({
-        ...prev,
-        atsScore: analysisResult!.overallScore || prev.atsScore,
-        primaryResumeText: version.resumeText || version.content || ''
-      }));
+      setProfile(prev => {
+        // Update the version's cached score in the resumeVersions array
+        const updatedVersions = (prev.resumeVersions || []).map(v =>
+          v.id === versionId ? { ...v, score: analysisResult!.overallScore || 0, analysisData: analysisResult } : v
+        );
+        return {
+          ...prev,
+          atsScore: analysisResult!.overallScore || prev.atsScore,
+          primaryResumeText: version.resumeText || version.content || '',
+          activeResumeVersionId: versionId,
+          resumeVersions: updatedVersions
+        };
+      });
 
       const reRecs = getRecommendationsForResume(mockJobsList, version.resumeText || version.content || '', versionSkills, profile.targetRole);
       setRecommendations(reRecs);
     }
 
     setIsAnalyzingResume(false);
+  };
+
+  const deleteResumeVersion = async (versionId: string) => {
+    // Delete via API
+    await UserService.deleteResumeVersionApi(versionId);
+
+    // Update profile
+    setProfile(prev => {
+      const remainingVersions = (prev.resumeVersions || []).filter(v => v.id !== versionId);
+      
+      // If we deleted the active version, switch to the first available one
+      if (activeResumeVersionId === versionId && remainingVersions.length > 0) {
+        const nextVersion = remainingVersions[0];
+        setActiveResumeVersionId(nextVersion.id);
+        
+        // Persist the fallback active version
+          UserService.updateProfileApi({ activeResumeVersionId: nextVersion.id } as any);
+
+        const nextAnalysis = (nextVersion as any).analysisData;
+        if (nextAnalysis && nextAnalysis.overallScore) {
+          setCurrentAnalysis(nextAnalysis);
+          return { ...prev, resumeVersions: remainingVersions, atsScore: nextAnalysis.overallScore };
+        } else {
+          setCurrentAnalysis(defaultResumeAnalysis);
+          return { ...prev, resumeVersions: remainingVersions, atsScore: nextVersion.score || 0 };
+        }
+      } else if (remainingVersions.length === 0) {
+        setActiveResumeVersionId('');
+        UserService.updateProfileApi({ activeResumeVersionId: '' } as any);
+        setCurrentAnalysis(defaultResumeAnalysis);
+        return { ...prev, resumeVersions: remainingVersions, atsScore: 0 };
+      }
+
+      return { ...prev, resumeVersions: remainingVersions };
+    });
   };
 
   const applyBulletSuggestion = (bulletText: string) => {
@@ -980,6 +1072,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         activeResumeVersionId,
         isAnalyzingResume,
         switchActiveResumeVersion,
+        deleteResumeVersion,
         uploadResume,
         applyBulletSuggestion,
         applyToJob,

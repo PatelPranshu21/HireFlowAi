@@ -151,7 +151,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   // Dynamic Chart Data based on actual ATS / Employability scores
-  const baseScore = hasResume ? (user.atsScore || 75) : 0;
+  const baseScore = hasResume ? (user.atsScore || 0) : 0;
   const chartData30 = [
     { day: 'Day 1', score: Math.max(0, baseScore - 15) },
     { day: 'Day 5', score: Math.max(0, baseScore - 10) },
@@ -454,13 +454,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       className="text-[#0052ff] stroke-current" 
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
                       fill="none" 
-                      strokeDasharray={`${user.atsScore || 85}, 100`} 
+                      strokeDasharray={`${user.atsScore || 0}, 100`} 
                       strokeLinecap="round" 
                       strokeWidth="3" 
                     />
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center flex-col">
-                    <span className="text-2xl font-bold font-geist text-white leading-none">{user.atsScore || 85}</span>
+                    <span className="text-2xl font-bold font-geist text-white leading-none">{user.atsScore || 0}</span>
                     <span className="text-[10px] text-[#a1a3b8]">/100</span>
                   </div>
                 </div>
@@ -507,7 +507,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {employabilityState === 'populated' && (
             <div className="flex flex-col gap-2">
               <span className="text-3xl font-bold font-geist text-white">
-                {user.analytics?.employabilityScore || 82}
+                {user.analytics?.employabilityScore || 0}
                 <span className="text-sm font-normal text-[#a1a3b8]">/100</span>
               </span>
               <div className="flex gap-1.5">

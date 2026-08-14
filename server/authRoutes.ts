@@ -29,7 +29,8 @@ import {
   dbGetUserCalendarEvents,
   dbSaveProductivityData,
   dbGetProductivityData,
-  dbGetAllUserData
+  dbGetAllUserData,
+  dbDeleteResumeVersion
 } from '../src/db/postgres';
 
 const router = Router();
@@ -878,6 +879,7 @@ router.post('/resume', async (req: Request, res: Response) => {
     });
 
     const savedVersion = await dbSaveResumeVersion(userId, {
+      id: req.body.versionId || undefined,
       resume_id: savedResume?.id,
       version_name: fileName || 'Master Resume',
       resume_text: cleanText,
@@ -924,6 +926,44 @@ router.post('/resume', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error in POST /api/auth/resume:', err);
     return res.status(500).json({ error: 'Failed to save resume', details: err.message });
+  }
+});
+
+// 7b. Delete Resume Version (/api/auth/resume-version/:id)
+router.delete('/resume-version/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const versionId = req.params.id;
+    if (!versionId) {
+      return res.status(400).json({ error: 'Version ID required' });
+    }
+
+    // Delete from resume_versions and ats_reports in PostgreSQL
+    const deleted = await dbDeleteResumeVersion(userId, versionId);
+
+    // Also remove from user's profile_data.resumeVersions
+    if (isDbConnected()) {
+      const userRecord = await dbFindUserById(userId);
+      if (userRecord) {
+        const existingProfile = userRecord.profile_data || {};
+        const existingVersions = existingProfile.resumeVersions || [];
+        const updatedVersions = existingVersions.filter((v: any) => v.id !== versionId);
+        const updatedProfile = {
+          ...existingProfile,
+          resumeVersions: updatedVersions
+        };
+        await dbUpdateUserProfile(userId, updatedProfile);
+      }
+    }
+
+    return res.json({ success: true, deleted });
+  } catch (err: any) {
+    console.error('Error in DELETE /api/auth/resume-version:', err);
+    return res.status(500).json({ error: 'Failed to delete resume version', details: err.message });
   }
 });
 

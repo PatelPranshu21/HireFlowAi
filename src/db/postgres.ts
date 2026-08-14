@@ -288,6 +288,9 @@ export async function initDb(): Promise<boolean> {
         CREATE INDEX IF NOT EXISTS idx_interviews_user ON user_interview_sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_calendar_user ON user_calendar_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_productivity_user_key ON user_productivity_data(user_id, data_key);
+
+        -- Add analysis_data column to resume_versions if missing
+        ALTER TABLE resume_versions ADD COLUMN IF NOT EXISTS analysis_data JSONB;
       `);
       isPostgresAvailable = true;
       console.log('[PostgreSQL] All 10 persistent database tables initialized successfully.');
@@ -717,7 +720,74 @@ export async function dbGetResumeVersions(userId: string): Promise<any[]> {
   }
 }
 
+// --- RESUME VERSION UPDATES & DELETION ---
+
+export async function dbUpdateResumeVersionScore(versionId: string, score: number, analysisData?: any): Promise<boolean> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return false;
+  try {
+    const cleanAnalysis = analysisData ? sanitizePgJson(analysisData) : null;
+    await p.query(
+      `UPDATE resume_versions SET score = $1, analysis_data = $2, updated_at = NOW() WHERE id = $3`,
+      [score, cleanAnalysis ? JSON.stringify(cleanAnalysis) : null, versionId]
+    );
+    // Also update the corresponding resumes row if linked
+    await p.query(
+      `UPDATE resumes SET ats_score = $1, updated_at = NOW() WHERE id = (SELECT resume_id FROM resume_versions WHERE id = $2)`,
+      [score, versionId]
+    );
+    return true;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbUpdateResumeVersionScore:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteResumeVersion(userId: string, versionId: string): Promise<boolean> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return false;
+  try {
+    // Get the linked resume_id before deleting
+    const verRes = await p.query(`SELECT resume_id FROM resume_versions WHERE id = $1`, [versionId]);
+    const resumeId = verRes.rows[0]?.resume_id;
+
+    // Delete associated ATS reports for this version
+    await p.query(`DELETE FROM ats_reports WHERE user_id = $1 AND resume_id = $2`, [userId, versionId]);
+    
+    // Delete the resume version record
+    await p.query(`DELETE FROM resume_versions WHERE id = $1 AND user_id = $2`, [versionId, userId]);
+    
+    // Clean up orphaned resume row if no other versions use it
+    if (resumeId) {
+      const countRes = await p.query(`SELECT count(*) FROM resume_versions WHERE resume_id = $1`, [resumeId]);
+      if (parseInt(countRes.rows[0].count) === 0) {
+        await p.query(`DELETE FROM resumes WHERE id = $1`, [resumeId]);
+      }
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbDeleteResumeVersion:', err);
+    return false;
+  }
+}
+
 // --- ATS REPORTS ---
+
+export async function dbGetAtsReportForResume(userId: string, resumeVersionId: string): Promise<any> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return null;
+  try {
+    const res = await p.query(
+      `SELECT * FROM ats_reports WHERE user_id = $1 AND resume_id = $2 ORDER BY created_at DESC LIMIT 1`,
+      [userId, resumeVersionId]
+    );
+    return res.rows.length > 0 ? res.rows[0] : null;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbGetAtsReportForResume:', err);
+    return null;
+  }
+}
 
 export async function dbSaveAtsReport(userId: string, report: {
   id?: string;
@@ -734,6 +804,15 @@ export async function dbSaveAtsReport(userId: string, report: {
   const p = getPool();
   if (!p || !isPostgresAvailable) return null;
   try {
+    let finalResumeId = report.resume_id || null;
+    
+    if (finalResumeId) {
+      const verRes = await p.query('SELECT resume_id FROM resume_versions WHERE id = $1', [finalResumeId]);
+      if (verRes.rows.length > 0) {
+        finalResumeId = verRes.rows[0].resume_id;
+      }
+    }
+
     const id = report.id || `ats_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const res = await p.query(
       `INSERT INTO ats_reports (
@@ -743,7 +822,7 @@ export async function dbSaveAtsReport(userId: string, report: {
       [
         id,
         userId,
-        report.resume_id || null,
+        finalResumeId,
         report.target_role || 'Software Engineer',
         report.overall_score || 0,
         report.formatting_score || 0,
@@ -816,7 +895,7 @@ export async function dbSaveJobApplication(userId: string, app: {
         app.stage || 'Applied',
         app.applied_date || new Date().toISOString().split('T')[0],
         app.notes || '',
-        app.match_score || 85
+        app.match_score || 0
       ]
     );
     return res.rows[0];

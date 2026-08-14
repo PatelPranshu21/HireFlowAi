@@ -334,6 +334,41 @@ export class UserService {
     }
   }
 
+  public static async deleteResumeVersionApi(versionId: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/auth/resume-version/${encodeURIComponent(versionId)}`, {
+        method: 'DELETE',
+        headers
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error deleting resume version API:', err);
+      return false;
+    }
+  }
+
+  public static async updateResumeVersionScoreApi(versionId: string, score: number): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/auth/resume', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ versionId, score, fileName: '', fileText: '' })
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error updating resume version score API:', err);
+      return false;
+    }
+  }
+
   public static async saveCalendarEventApi(event: any): Promise<boolean> {
     try {
       const token = this.getAuthToken();
@@ -468,7 +503,7 @@ export class UserService {
       hasCompletedOnboarding: true,
       appliedJobIds: [],
       savedJobIds: [],
-      atsScore: 88
+      atsScore: 0
     };
 
     const initialMap: Record<string, StoredUserAccount> = {

@@ -195,7 +195,7 @@ export const InterviewDashboardTab: React.FC<InterviewDashboardTabProps> = ({
           </div>
           <p className="text-2xl font-bold font-geist text-white">{behavioralPracticedCount}</p>
           <span className="text-[11px] font-mono text-[#c3c5d9] mt-1 block">
-            {behavioralPracticedCount > 0 ? `Avg STAR Score: ${user.interviewMetrics?.behavioralScore || 85}%` : '0 responses scored'}
+            {behavioralPracticedCount > 0 ? `Avg STAR Score: ${user.interviewMetrics?.behavioralScore || 0}%` : '0 responses scored'}
           </span>
         </div>
 

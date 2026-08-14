@@ -8,7 +8,7 @@ export class EmployabilityScoreService {
    */
   public static calculateScores(profile: CentralCareerProfile): AnalyticsScores {
     // 1. Resume & ATS Quality (30% weight)
-    const atsScore = profile.atsScore || 75;
+    const atsScore = profile.atsScore || 0;
     const resumeWeight = (atsScore / 100) * 30;
 
     // 2. Skills & Technologies Breadth (25% weight)
