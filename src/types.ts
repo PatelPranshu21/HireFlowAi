@@ -168,6 +168,8 @@ export interface CentralCareerProfile {
   // Resume Information
   atsScore: number;
   resumeText?: string;
+  primaryResumeText?: string;
+  activeResumeVersionId?: string;
   resumeVersions: ResumeVersion[];
   resumeHistory: UploadHistoryItem[];
 
@@ -414,12 +416,14 @@ export interface AtsCategoryScore {
 export interface SectionAnalysisItem {
   id: string;
   sectionName: string;
+  score?: number;
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
   recommendedChanges: string[];
   priority: 'High' | 'Medium' | 'Low';
   estimatedAtsGain: number;
+  isDetected?: boolean;
 }
 
 export interface AiImprovementSuggestion {
@@ -438,8 +442,10 @@ export interface KeywordItem {
   category: string;
   importance: 'High' | 'Medium' | 'Low' | 'Recommended' | string;
   detected: boolean;
+  foundInResume?: boolean;
   count?: number;
   frequency?: number;
+  source?: 'resume' | 'job_requirement' | 'recommendation' | 'canonical_skill_dictionary';
 }
 
 export interface TailorResumeResponse {
@@ -515,6 +521,7 @@ export interface ResumeVersion {
   isTailored?: boolean;
   targetRole?: string;
   targetCompany?: string;
+  analysisData?: any;
 }
 
 export interface ResumeAnalysisResult {

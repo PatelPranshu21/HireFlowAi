@@ -31,7 +31,7 @@ import { EmployabilityScoreService } from '../services/employabilityScoreService
 import { ProductivityService } from '../services/productivityService';
 import { UserService } from '../services/userService';
 import { AiProviderService } from '../services/aiProviderService';
-import { getRecommendationsForResume, mockJobsList } from '../data/jobProvider';
+import { getRecommendationsForResume } from '../data/jobProvider';
 
 interface EcosystemContextType {
   profile: CentralCareerProfile;
@@ -213,33 +213,66 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         const pData = dbData.user.profile_data || {};
         const pgResumes = dbData.resumes || [];
         const pgVersions = dbData.resumeVersions || [];
-
+        let activeVerId = '';
         if (pgVersions.length > 0) {
-          pData.resumeVersions = pgVersions.map((v: any) => ({
-            id: v.id,
-            versionName: v.version_name,
-            fileName: v.file_name || v.version_name,
-            uploadedAt: v.uploaded_at || 'Saved',
-            fileSize: v.file_size || '180 KB',
-            score: v.score ?? 0,
-            template: v.template || 'modern_tech',
-            parsedData: v.parsed_data || {},
-            jobsMatchedCount: v.jobs_matched_count || 16,
-            content: v.resume_text,
-            resumeText: v.resume_text,
-            analysisData: v.analysis_data || null
-          }));
+          const safeParseJson = (val: any) => {
+            if (!val) return null;
+            if (typeof val === 'object') return val;
+            if (typeof val === 'string') {
+              try { return JSON.parse(val); } catch (e) { return null; }
+            }
+            return null;
+          };
+
+          pData.resumeVersions = pgVersions.map((v: any) => {
+            const versionMatchesCount = (dbData.jobMatches || []).filter((jm: any) => jm.resume_version_id === v.id).length;
+            const parsedAnalysis = safeParseJson(v.analysis_data);
+            const effectiveScore = (parsedAnalysis?.overallScore !== undefined) ? parsedAnalysis.overallScore : (v.score ?? 0);
+            return {
+              id: v.id,
+              versionName: v.version_name,
+              fileName: v.file_name || v.version_name,
+              uploadedAt: v.uploaded_at || 'Saved',
+              fileSize: v.file_size || '180 KB',
+              score: effectiveScore,
+              template: v.template || 'modern_tech',
+              parsedData: safeParseJson(v.parsed_data) || {},
+              jobsMatchedCount: versionMatchesCount > 0 ? versionMatchesCount : (v.jobs_matched_count ?? 0),
+              content: v.resume_text,
+              resumeText: v.resume_text,
+              analysisData: parsedAnalysis
+            };
+          });
           const savedActiveId = pData.activeResumeVersionId;
           const activeVer = pData.resumeVersions.find((v: any) => v.id === savedActiveId) || pData.resumeVersions[0];
           
+          activeVerId = activeVer.id;
           pData.resumeText = activeVer.resumeText || pData.resumeText;
+          pData.activeResumeVersionId = activeVer.id;
           setActiveResumeVersionId(activeVer.id);
-          if (activeVer.analysisData && activeVer.analysisData.overallScore) {
+
+          if (activeVer.analysisData && activeVer.analysisData.overallScore !== undefined && (activeVer.analysisData.categoryScores?.length > 0 || activeVer.analysisData.categoryBreakdown?.length > 0)) {
             setCurrentAnalysis(activeVer.analysisData);
             pData.atsScore = activeVer.analysisData.overallScore;
+          } else if (activeVer.resumeText && activeVer.resumeText.trim().length > 20) {
+            // Run fresh analysis if analysisData wasn't pre-cached
+            AiProviderService.analyzeResume(activeVer.resumeText, pData.targetRole || "Software Engineer", activeVer.id).then(res => {
+              if (res && res.overallScore) {
+                setCurrentAnalysis(res);
+                pData.atsScore = res.overallScore;
+                UserService.updateResumeVersionScoreApi(activeVer.id, res.overallScore, res);
+              }
+            });
+            pData.atsScore = activeVer.score || 0;
+          } else if (activeVer.score && activeVer.score > 0) {
+            setCurrentAnalysis({
+              ...defaultResumeAnalysis,
+              overallScore: activeVer.score
+            });
+            pData.atsScore = activeVer.score;
           } else {
             setCurrentAnalysis(defaultResumeAnalysis);
-            pData.atsScore = activeVer.score || 0;
+            pData.atsScore = 0;
           }
         } else if (pgResumes.length > 0) {
           pData.resumeVersions = pgResumes.map((r: any) => ({
@@ -251,7 +284,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
             score: r.ats_score ?? 0,
             template: 'modern_tech',
             parsedData: r.parsed_data || {},
-            jobsMatchedCount: 16,
+            jobsMatchedCount: 0,
             content: r.resume_text,
             resumeText: r.resume_text,
             analysisData: null
@@ -259,9 +292,15 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
           const savedActiveId = pData.activeResumeVersionId;
           const activeVer = pData.resumeVersions.find((v: any) => v.id === savedActiveId) || pData.resumeVersions[0];
           
+          activeVerId = activeVer.id;
           pData.resumeText = activeVer.resumeText || pData.resumeText;
           pData.atsScore = activeVer.score || 0;
+          pData.activeResumeVersionId = activeVer.id;
           setActiveResumeVersionId(activeVer.id);
+        } else {
+          setActiveResumeVersionId('');
+          setRecommendations([]);
+          pData.atsScore = 0;
         }
 
         // Restore saved job IDs from database
@@ -270,6 +309,29 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
         }
 
         authUpdateProfile(pData);
+
+        // Load persisted job matches from PostgreSQL specifically for the active resume version
+        if (activeVerId) {
+          UserService.getJobMatchesApi(activeVerId).then(matches => {
+            if (matches && matches.length > 0) {
+              setRecommendations(matches);
+            } else {
+              const activeVer = pData.resumeVersions?.find((v: any) => v.id === activeVerId);
+              if (activeVer) {
+                UserService.matchResumeJobsApi({
+                  resumeVersionId: activeVerId,
+                  resumeText: activeVer.resumeText || activeVer.content || '',
+                  skills: activeVer.parsedData?.skills || pData.skills || [],
+                  targetRole: pData.targetRole || "Software Engineer"
+                }).then(recs => {
+                  setRecommendations(recs || []);
+                });
+              } else {
+                setRecommendations([]);
+              }
+            }
+          });
+        }
       }
 
       if (dbData.calendarEvents && dbData.calendarEvents.length > 0) {
@@ -425,13 +487,14 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setIsAnalyzingResume(true);
     const newVersionId = `v_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-    // 1. Save to DB
-    await UserService.uploadResumeApi({
+    // 1. First save to DB with initial extracted text and parsedData so resume and resume_version records exist
+    const uploadRes = await UserService.uploadResumeApi({
       fileName,
       fileText,
       parsedData,
       versionId: newVersionId,
-      versionName: fileName
+      versionName: fileName,
+      score: 0
     });
 
     // 2. Perform dynamic AI resume analysis
@@ -442,14 +505,38 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       console.error("Analysis call failed:", err);
     }
 
-    if (!analysisResult) {
-      analysisResult = defaultResumeAnalysis;
+    if (!analysisResult || analysisResult.overallScore === 0) {
+      if (uploadRes?.analysisData && uploadRes.analysisData.overallScore > 0) {
+        analysisResult = uploadRes.analysisData;
+      } else {
+        analysisResult = defaultResumeAnalysis;
+      }
+    }
+
+    if (analysisResult.overallScore > 0) {
+      UserService.updateResumeVersionScoreApi(newVersionId, analysisResult.overallScore, analysisResult);
     }
 
     setCurrentAnalysis(analysisResult);
     setActiveResumeVersionId(newVersionId);
 
-    // 3. Construct new version object
+    const newSkills = parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected && k.foundInResume).map(k => k.keyword) || profile.skills;
+
+    // 3. Match resume against jobs and persist strictly for this newVersionId
+    let newJobRecs: JobRecommendation[] = [];
+    try {
+      const apiMatches = await UserService.matchResumeJobsApi({
+        resumeVersionId: newVersionId,
+        resumeText: fileText,
+        skills: newSkills,
+        targetRole: parsedData?.targetRole || profile.targetRole || "Software Engineer"
+      });
+      if (apiMatches && apiMatches.length > 0) {
+        newJobRecs = apiMatches;
+      }
+    } catch (e) {}
+
+    // 4. Construct new version object
     const newVersionObj: ResumeVersion = {
       id: newVersionId,
       versionName: fileName,
@@ -460,11 +547,12 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       score: analysisResult.overallScore || 0,
       template: 'modern_tech',
       fileName: fileName,
-      fileSize: '184 KB'
+      fileSize: '184 KB',
+      jobsMatchedCount: newJobRecs.length,
+      analysisData: analysisResult
     };
 
     const updatedVersions = [newVersionObj, ...(profile.resumeVersions || []).map(v => ({ ...v, isPrimary: false }))];
-    const newSkills = parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected).map(k => k.keyword) || profile.skills;
 
     const updatedProfile: CentralCareerProfile = {
       ...profile,
@@ -472,23 +560,13 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       skills: newSkills,
       resumeVersions: updatedVersions,
       primaryResumeText: fileText,
+      activeResumeVersionId: newVersionId,
       targetRole: parsedData?.targetRole || profile.targetRole || "Software Engineer"
     };
-
-    // 4. Recalculate job recommendations specifically for this resume
-    const newJobRecs = getRecommendationsForResume(mockJobsList, fileText, newSkills, updatedProfile.targetRole);
 
     setProfile(updatedProfile);
     setRecommendations(newJobRecs);
     setIsAnalyzingResume(false);
-
-    // Persist updated score back to profile's resumeVersions array
-    setProfile(prev => {
-      const updatedVersions = (prev.resumeVersions || []).map(v =>
-        v.id === newVersionId ? { ...v, score: analysisResult!.overallScore || 0, analysisData: analysisResult } : v
-      );
-      return { ...prev, resumeVersions: updatedVersions };
-    });
 
     pushCoachMessage({
       type: 'success',
@@ -510,28 +588,54 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       ...prev,
       activeResumeVersionId: versionId
     }));
-      UserService.updateProfileApi({ activeResumeVersionId: versionId } as any);
+    UserService.updateProfileApi({ activeResumeVersionId: versionId } as any);
 
-    // Check for cached analysis first (from DB analysis_data or previous analysis)
-    const cachedAnalysis = (version as any).analysisData;
-    if (cachedAnalysis && cachedAnalysis.overallScore) {
+    // 1. Fetch exact persisted job matches for this version from PostgreSQL
+    let versionMatches: JobRecommendation[] = [];
+    try {
+      const persistedMatches = await UserService.getJobMatchesApi(versionId);
+      if (persistedMatches && persistedMatches.length > 0) {
+        versionMatches = persistedMatches;
+      }
+    } catch (e) {}
+
+    const versionSkills = version.parsedData?.skills || (version as any).analysisData?.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
+
+    // If no matches persisted yet, calculate and persist now
+    if (versionMatches.length === 0) {
+      try {
+        const calculated = await UserService.matchResumeJobsApi({
+          resumeVersionId: versionId,
+          resumeText: version.resumeText || version.content || '',
+          skills: versionSkills,
+          targetRole: profile.targetRole || "Software Engineer"
+        });
+        if (calculated && calculated.length > 0) {
+          versionMatches = calculated;
+        }
+      } catch (e) {}
+    }
+
+    setRecommendations(versionMatches);
+
+    // 2. Check for cached analysis
+    let cachedAnalysis = (version as any).analysisData;
+    if (typeof cachedAnalysis === 'string') {
+      try { cachedAnalysis = JSON.parse(cachedAnalysis); } catch (e) { cachedAnalysis = null; }
+    }
+    if (cachedAnalysis && typeof cachedAnalysis === 'object' && cachedAnalysis.overallScore !== undefined && (cachedAnalysis.categoryScores?.length > 0 || cachedAnalysis.categoryBreakdown?.length > 0)) {
       setCurrentAnalysis(cachedAnalysis);
-      const versionSkills = version.parsedData?.skills || cachedAnalysis.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
-
       setProfile(prev => ({
         ...prev,
-        atsScore: cachedAnalysis.overallScore || version.score || prev.atsScore,
+        atsScore: cachedAnalysis.overallScore,
         primaryResumeText: version.resumeText || version.content || '',
         activeResumeVersionId: versionId
       }));
-
-      const reRecs = getRecommendationsForResume(mockJobsList, version.resumeText || version.content || '', versionSkills, profile.targetRole);
-      setRecommendations(reRecs);
       setIsAnalyzingResume(false);
       return;
     }
 
-    // No cached analysis — run fresh analysis
+    // 3. If not cached, run fresh ATS analysis
     let analysisResult: ResumeAnalysisResult | null = null;
     try {
       analysisResult = await AiProviderService.analyzeResume(version.resumeText || version.content || '', profile.targetRole || "Software Engineer", version.id);
@@ -541,62 +645,98 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
     if (analysisResult) {
       setCurrentAnalysis(analysisResult);
-      const versionSkills = version.parsedData?.skills || analysisResult.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
-
+      if (analysisResult.overallScore > 0) {
+        UserService.updateResumeVersionScoreApi(version.id, analysisResult.overallScore, analysisResult);
+      }
       setProfile(prev => {
-        // Update the version's cached score in the resumeVersions array
         const updatedVersions = (prev.resumeVersions || []).map(v =>
           v.id === versionId ? { ...v, score: analysisResult!.overallScore || 0, analysisData: analysisResult } : v
         );
         return {
           ...prev,
-          atsScore: analysisResult!.overallScore || prev.atsScore,
+          atsScore: analysisResult!.overallScore || 0,
           primaryResumeText: version.resumeText || version.content || '',
           activeResumeVersionId: versionId,
           resumeVersions: updatedVersions
         };
       });
-
-      const reRecs = getRecommendationsForResume(mockJobsList, version.resumeText || version.content || '', versionSkills, profile.targetRole);
-      setRecommendations(reRecs);
+    } else {
+      setCurrentAnalysis(defaultResumeAnalysis);
+      setProfile(prev => ({
+        ...prev,
+        atsScore: 0,
+        primaryResumeText: version.resumeText || version.content || '',
+        activeResumeVersionId: versionId
+      }));
     }
 
     setIsAnalyzingResume(false);
   };
 
   const deleteResumeVersion = async (versionId: string) => {
-    // Delete via API
+    // Delete via API (removes from PostgreSQL resume_versions and job_matches)
     await UserService.deleteResumeVersionApi(versionId);
 
-    // Update profile
-    setProfile(prev => {
-      const remainingVersions = (prev.resumeVersions || []).filter(v => v.id !== versionId);
-      
-      // If we deleted the active version, switch to the first available one
-      if (activeResumeVersionId === versionId && remainingVersions.length > 0) {
-        const nextVersion = remainingVersions[0];
-        setActiveResumeVersionId(nextVersion.id);
-        
-        // Persist the fallback active version
-          UserService.updateProfileApi({ activeResumeVersionId: nextVersion.id } as any);
+    const remainingVersions = (profile.resumeVersions || []).filter(v => v.id !== versionId);
 
-        const nextAnalysis = (nextVersion as any).analysisData;
-        if (nextAnalysis && nextAnalysis.overallScore) {
-          setCurrentAnalysis(nextAnalysis);
-          return { ...prev, resumeVersions: remainingVersions, atsScore: nextAnalysis.overallScore };
+    // If we deleted the active version, switch to the first remaining one
+    if (activeResumeVersionId === versionId && remainingVersions.length > 0) {
+      const nextVersion = remainingVersions[0];
+      setActiveResumeVersionId(nextVersion.id);
+      UserService.updateProfileApi({ activeResumeVersionId: nextVersion.id } as any);
+
+      // Load job matches for the next version
+      UserService.getJobMatchesApi(nextVersion.id).then(matches => {
+        if (matches && matches.length > 0) {
+          setRecommendations(matches);
         } else {
-          setCurrentAnalysis(defaultResumeAnalysis);
-          return { ...prev, resumeVersions: remainingVersions, atsScore: nextVersion.score || 0 };
+          const nextSkills = nextVersion.parsedData?.skills || profile.skills;
+          UserService.matchResumeJobsApi({
+            resumeVersionId: nextVersion.id,
+            resumeText: nextVersion.resumeText || nextVersion.content || '',
+            skills: nextSkills,
+            targetRole: profile.targetRole || "Software Engineer"
+          }).then(recs => {
+            setRecommendations(recs || []);
+          });
         }
-      } else if (remainingVersions.length === 0) {
-        setActiveResumeVersionId('');
-        UserService.updateProfileApi({ activeResumeVersionId: '' } as any);
-        setCurrentAnalysis(defaultResumeAnalysis);
-        return { ...prev, resumeVersions: remainingVersions, atsScore: 0 };
-      }
+      });
 
-      return { ...prev, resumeVersions: remainingVersions };
-    });
+      const nextAnalysis = (nextVersion as any).analysisData;
+      if (nextAnalysis && nextAnalysis.overallScore) {
+        setCurrentAnalysis(nextAnalysis);
+        setProfile(prev => ({
+          ...prev,
+          resumeVersions: remainingVersions,
+          activeResumeVersionId: nextVersion.id,
+          atsScore: nextAnalysis.overallScore
+        }));
+      } else {
+        setCurrentAnalysis(defaultResumeAnalysis);
+        setProfile(prev => ({
+          ...prev,
+          resumeVersions: remainingVersions,
+          activeResumeVersionId: nextVersion.id,
+          atsScore: nextVersion.score || 0
+        }));
+      }
+    } else if (remainingVersions.length === 0) {
+      // No resumes remain
+      setActiveResumeVersionId('');
+      setRecommendations([]);
+      UserService.updateProfileApi({ activeResumeVersionId: '' } as any);
+      setCurrentAnalysis(defaultResumeAnalysis);
+      setProfile(prev => ({
+        ...prev,
+        resumeVersions: [],
+        activeResumeVersionId: '',
+        atsScore: 0,
+        primaryResumeText: '',
+        resumeText: ''
+      }));
+    } else {
+      setProfile(prev => ({ ...prev, resumeVersions: remainingVersions }));
+    }
   };
 
   const applyBulletSuggestion = (bulletText: string) => {

@@ -4,12 +4,9 @@ import {
   BarChart3, 
   CheckCircle2, 
   AlertCircle, 
-  Info, 
   Sparkles, 
-  TrendingUp, 
-  FileCheck2, 
-  ShieldCheck, 
-  Target
+  ShieldCheck,
+  FileQuestion
 } from 'lucide-react';
 
 interface AtsScoreCategoryBreakdownTabProps {
@@ -18,21 +15,28 @@ interface AtsScoreCategoryBreakdownTabProps {
 }
 
 export const AtsScoreCategoryBreakdownTab: React.FC<AtsScoreCategoryBreakdownTabProps> = ({
-  analysis,
-  onApplyCategoryTip
+  analysis
 }) => {
-  const categories: AtsCategoryScore[] = analysis.categoryScores || [
-    { category: 'Formatting', score: 92, explanation: 'Clean machine-readable single column structure and standard typography.', tip: 'Keep font sizes between 10pt and 12pt.' },
-    { category: 'Keywords', score: 82, explanation: 'High density for React/Node/AWS; missing distributed systems & Kubernetes.', tip: 'Add Docker, Kubernetes, and gRPC keywords.' },
-    { category: 'Skills', score: 88, explanation: 'Well organized into Languages, Frameworks, and Cloud Infrastructure.', tip: 'Group skills by proficiency or category.' },
-    { category: 'Projects', score: 85, explanation: 'Clear project titles and tech stacks included.', tip: 'Add live URLs or GitHub repository links.' },
-    { category: 'Experience', score: 86, explanation: 'Strong tech companies with concise achievements.', tip: 'Add dollar values or percentage growth figures.' },
-    { category: 'Education', score: 95, explanation: 'Top university degree with graduation year clearly stated.', tip: 'No changes needed.' },
-    { category: 'Readability', score: 90, explanation: 'Bullet points are 1-2 lines long; good white space balance.', tip: 'Maintain bullet length under 25 words.' },
-    { category: 'Grammar', score: 96, explanation: 'No spelling errors; minor tense consistency suggestion.', tip: 'Use past tense for former roles.' },
-    { category: 'Structure', score: 91, explanation: 'Logical flow: Summary -> Experience -> Projects -> Skills -> Education.', tip: 'Perfect section order.' },
-    { category: 'Impact', score: 78, explanation: 'Good achievements, but needs more quantifiable metric proof.', tip: 'Include 2+ percentages or throughput metrics per role.' }
-  ];
+  const categories: AtsCategoryScore[] = analysis.categoryScores || (analysis as any).categoryBreakdown || [];
+
+  const highCount = categories.filter(c => c.score >= 85).length;
+  const needsFixCount = categories.filter(c => c.score < 75).length;
+
+  if (categories.length === 0) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-8 shadow-xl text-center">
+          <div className="w-16 h-16 rounded-2xl bg-[#0052ff]/15 border border-[#0052ff]/30 flex items-center justify-center text-[#4cd7f6] mx-auto mb-4">
+            <FileQuestion className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold font-geist text-white mb-2">No Category Breakdown Available</h3>
+          <p className="text-xs text-[#c3c5d9] max-w-md mx-auto leading-relaxed">
+            Upload or analyze a resume to generate an in-depth 10-point ATS category audit spanning structure, impact, keywords, and readability.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -80,16 +84,18 @@ export const AtsScoreCategoryBreakdownTab: React.FC<AtsScoreCategoryBreakdownTab
               Overall ATS Compatibility Assessment
             </h2>
             <p className="text-sm text-[#c3c5d9] leading-relaxed max-w-2xl">
-              {analysis.overallScore > 0 ? analysis.summary : 'Upload your resume to analyse your ATS compatibility.'}
+              {analysis.overallScore > 0 ? analysis.summary : 'Upload your resume to analyze your ATS compatibility.'}
             </p>
 
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-2">
               <div className="flex items-center gap-1.5 text-xs font-mono text-green-400 bg-green-500/10 px-3 py-1 rounded-lg border border-green-500/20">
-                <CheckCircle2 className="w-4 h-4" /> 7 High Performing Categories
+                <CheckCircle2 className="w-4 h-4" /> {highCount} High Performing Categories
               </div>
-              <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300 bg-amber-400/10 px-3 py-1 rounded-lg border border-amber-400/20">
-                <AlertCircle className="w-4 h-4" /> 3 Categories Need Optimization
-              </div>
+              {needsFixCount > 0 && (
+                <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300 bg-amber-400/10 px-3 py-1 rounded-lg border border-amber-400/20">
+                  <AlertCircle className="w-4 h-4" /> {needsFixCount} Categories Need Optimization
+                </div>
+              )}
             </div>
           </div>
         </div>

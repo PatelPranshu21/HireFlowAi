@@ -1,15 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResumeAnalysisResult, AiImprovementSuggestion } from '../../types';
 import { 
   Wand2, 
   Check, 
   X, 
-  ArrowRight, 
-  RefreshCw, 
   Sparkles, 
-  CheckCircle2, 
-  Zap, 
-  Filter 
+  FileQuestion
 } from 'lucide-react';
 
 interface AiImprovementEngineTabProps {
@@ -24,72 +20,11 @@ export const AiImprovementEngineTab: React.FC<AiImprovementEngineTabProps> = ({
   onRejectSuggestion
 }) => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [suggestions, setSuggestions] = useState<AiImprovementSuggestion[]>(
-    analysis.aiSuggestions || [
-      {
-        id: 'sug_1',
-        title: 'Quantify Backend Throughput & Latency',
-        section: 'bullets',
-        currentVersion: 'Built backend services for streaming media processing.',
-        improvedVersion: 'Architected and deployed highly available distributed streaming services handling 10,000+ requests/sec using Kafka and Redis with sub-10ms processing latency.',
-        reason: 'Increases ATS keyword match for "Distributed Systems" and adds measurable technical impact.',
-        expectedAtsIncrease: 8,
-        status: 'pending'
-      },
-      {
-        id: 'sug_2',
-        title: 'Enhance Cloud Infrastructure Details',
-        section: 'experience',
-        currentVersion: 'Managed cloud infrastructure deployment and maintenance.',
-        improvedVersion: 'Engineered multi-region AWS cloud infrastructure (EC2, S3, RDS, EKS) using Terraform and automated CI/CD pipelines.',
-        reason: 'Adds specific cloud services (AWS, EKS, Terraform) required by 85% of target job posts.',
-        expectedAtsIncrease: 6,
-        status: 'pending'
-      },
-      {
-        id: 'sug_3',
-        title: 'Elevate Professional Summary',
-        section: 'summary',
-        currentVersion: 'Passionate Senior Engineer with 7+ years of experience building scalable web applications and cloud microservices.',
-        improvedVersion: 'Results-driven Senior Software Engineer with 7+ years of experience architecting distributed microservices, leading cross-functional teams, and accelerating web application performance by 35% for 200k+ active daily users.',
-        reason: 'Creates a commanding first impression with clear scale metrics and leadership keywords.',
-        expectedAtsIncrease: 5,
-        status: 'pending'
-      },
-      {
-        id: 'sug_4',
-        title: 'Strengthen Technical Skills Section',
-        section: 'skills',
-        currentVersion: 'Tools: Docker, AWS, Git, Kafka, Redis',
-        improvedVersion: 'Cloud & Infrastructure: AWS (EC2, S3, EKS, CloudFront), Terraform, Docker, Kubernetes, CI/CD (GitHub Actions), Kafka, Redis',
-        reason: 'Increases searchability for DevOps and Kubernetes keywords in automated recruiter screens.',
-        expectedAtsIncrease: 4,
-        status: 'pending'
-      },
-      {
-        id: 'sug_5',
-        title: 'Reduce Passive Voice in Lead Experience',
-        section: 'passive_voice',
-        currentVersion: 'Was responsible for leading frontend migration.',
-        improvedVersion: 'Spearheaded frontend migration to Next.js and TypeScript, driving a 35% reduction in initial page load time.',
-        reason: 'Replaces weak passive voice with strong active verb "Spearheaded".',
-        expectedAtsIncrease: 4,
-        status: 'pending'
-      },
-      {
-        id: 'sug_6',
-        title: 'Fix Capitalization & Tech Term Grammar',
-        section: 'grammar',
-        currentVersion: 'Experienced with typescript, react, and Postgres databases.',
-        improvedVersion: 'Experienced with TypeScript, React.js, and PostgreSQL database architectures.',
-        reason: 'Ensures standard capitalization expected by recruiter keywords parser.',
-        expectedAtsIncrease: 3,
-        status: 'pending'
-      }
-    ]
-  );
+  const [suggestions, setSuggestions] = useState<AiImprovementSuggestion[]>(analysis.aiSuggestions || (analysis as any).improvements || []);
 
-  const [loadingSuggestionId, setLoadingSuggestionId] = useState<string | null>(null);
+  useEffect(() => {
+    setSuggestions(analysis.aiSuggestions || (analysis as any).improvements || []);
+  }, [analysis.aiSuggestions, (analysis as any).improvements]);
 
   const handleAccept = (sug: AiImprovementSuggestion) => {
     setSuggestions(prev => prev.map(s => s.id === sug.id ? { ...s, status: 'accepted' } : s));
@@ -109,6 +44,22 @@ export const AiImprovementEngineTab: React.FC<AiImprovementEngineTabProps> = ({
   const pendingCount = suggestions.filter(s => s.status === 'pending').length;
   const acceptedCount = suggestions.filter(s => s.status === 'accepted').length;
 
+  if (suggestions.length === 0) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-8 shadow-xl text-center">
+          <div className="w-16 h-16 rounded-2xl bg-[#0052ff]/15 border border-[#0052ff]/30 flex items-center justify-center text-[#4cd7f6] mx-auto mb-4">
+            <FileQuestion className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold font-geist text-white mb-2">No AI Suggestions Available</h3>
+          <p className="text-xs text-[#c3c5d9] max-w-md mx-auto leading-relaxed">
+            Upload or analyze a resume to generate evidence-based bullet rewrites, metric enhancements, and keyword optimizations tailored to your target role.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header Banner */}
@@ -122,7 +73,7 @@ export const AiImprovementEngineTab: React.FC<AiImprovementEngineTabProps> = ({
               AI Resume Improvements
             </h2>
             <p className="text-xs text-[#c3c5d9] mt-0.5">
-              Review and accept targeted AI rewrites to instantly boost your ATS keyword score and impact.
+              Review and accept evidence-based AI rewrites generated directly from your resume text to boost ATS scores and technical impact.
             </p>
           </div>
 

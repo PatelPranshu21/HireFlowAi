@@ -19,7 +19,8 @@ import {
   Award, 
   Save, 
   Trash2,
-  Plus
+  Plus,
+  Loader2
 } from 'lucide-react';
 
 interface ResumeUploadParserModalProps {
@@ -70,6 +71,7 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
   const [dragActive, setDragActive] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
@@ -123,7 +125,10 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
           body: JSON.stringify({ fileData: base64Data, fileName: file.name })
         });
         const data = await res.json();
-        const extractedText = data.text || data.extractedText || `Resume Content from ${file.name}`;
+        if (!res.ok || data.extractionSuccess === false || !data.text) {
+          throw new Error(data.error || "Text extraction failed: No selectable text found in uploaded file.");
+        }
+        const extractedText = data.text || data.extractedText;
         setUploadedFileText(extractedText);
         
         setUploadProgress(85);
@@ -157,12 +162,12 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
           fileSize: `${Math.round(file.size / 1024)} KB`,
           versionName: file.name,
           parsingStatus: 'Parsed ✓',
-          fileType: extension.toUpperCase().replace('.', '') as any
+          fileType: (data.fileType || extension.toUpperCase().replace('.', '')) as any
         };
         setHistory(prev => [newHistoryItem, ...prev]);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Parsing error:", err);
-        setUploadError("Failed to parse resume content via AI. Basic fallback applied.");
+        setUploadError(err.message || "Failed to extract text from document. Please ensure the file contains selectable text.");
       } finally {
         setIsParsing(false);
       }
@@ -186,11 +191,15 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
     }
   };
 
-  const handleSaveAndSync = () => {
-    if (parsedData) {
-      onSaveParsedResume(parsedData, uploadedFileName, uploadedFileText);
+  const handleSaveAndSync = async () => {
+    if (isSubmitting || isParsing || !parsedData) return;
+    setIsSubmitting(true);
+    try {
+      await onSaveParsedResume(parsedData, uploadedFileName, uploadedFileText);
       onSyncWithProfilePrompt(parsedData);
       onClose();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -466,9 +475,18 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
                   <div className="flex justify-end gap-3 pt-2">
                     <button
                       onClick={handleSaveAndSync}
-                      className="px-5 py-2.5 bg-[#0052ff] hover:bg-[#0052ff]/90 text-white rounded-xl text-xs font-mono font-bold transition-colors flex items-center gap-2 cursor-pointer shadow-lg shadow-[#0052ff]/25"
+                      disabled={isSubmitting || isParsing}
+                      className="px-5 py-2.5 bg-[#0052ff] hover:bg-[#0052ff]/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-mono font-bold transition-colors flex items-center gap-2 cursor-pointer shadow-lg shadow-[#0052ff]/25"
                     >
-                      <Save className="w-4 h-4" /> Save &amp; Sync to Profile
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Saving &amp; Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" /> Save &amp; Sync to Profile
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

@@ -34,6 +34,8 @@ async function runMigration() {
         'resumes',
         'resume_versions',
         'ats_reports',
+        'jobs',
+        'job_matches',
         'user_job_applications',
         'user_saved_jobs',
         'user_interview_sessions',
@@ -43,7 +45,7 @@ async function runMigration() {
 
       const missing = requiredTables.filter(t => !tableNames.includes(t));
       if (missing.length === 0) {
-        console.log('SUCCESS: All 10 required persistent tables exist in the database!');
+        console.log('SUCCESS: All 12 required persistent tables exist in the database!');
       } else {
         console.error('WARNING: Missing tables:', missing);
       }

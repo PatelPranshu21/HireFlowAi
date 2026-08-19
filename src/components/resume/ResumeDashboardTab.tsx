@@ -139,7 +139,9 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
           </div>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-4xl font-bold font-geist text-white">{completionScore}%</span>
-            <span className="text-xs font-mono text-[#8d90a2] ml-auto">7/7 Sections</span>
+            <span className="text-xs font-mono text-[#8d90a2] ml-auto">
+              {(analysis.sectionAnalyses || []).filter(s => s.isDetected !== false && s.score > 0).length}/6 Sections
+            </span>
           </div>
           <div className="mt-3 w-full bg-[#282934] h-1.5 rounded-full overflow-hidden">
             <div className="bg-green-400 h-full rounded-full" style={{ width: `${completionScore}%` }} />
@@ -153,10 +155,28 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
             <Award className="w-5 h-5 text-amber-400" />
           </div>
           <div className="mt-2">
-            <span className="inline-block px-2.5 py-1 rounded bg-amber-400/10 text-amber-300 font-mono text-xs font-bold border border-amber-400/20 mb-1">
-              Gold Tier • Top 8%
-            </span>
-            <p className="text-xs text-[#c3c5d9] mt-1">Beats 92% of candidate profiles for Senior roles.</p>
+            {analysis.overallScore >= 85 ? (
+              <>
+                <span className="inline-block px-2.5 py-1 rounded bg-green-500/10 text-green-400 font-mono text-xs font-bold border border-green-500/20 mb-1">
+                  Gold Tier • Top 10%
+                </span>
+                <p className="text-xs text-[#c3c5d9] mt-1">Exceptional ATS compliance & keyword density.</p>
+              </>
+            ) : analysis.overallScore >= 70 ? (
+              <>
+                <span className="inline-block px-2.5 py-1 rounded bg-amber-400/10 text-amber-300 font-mono text-xs font-bold border border-amber-400/20 mb-1">
+                  Competitive Tier
+                </span>
+                <p className="text-xs text-[#c3c5d9] mt-1">Strong profile; minor keyword optimizations recommended.</p>
+              </>
+            ) : (
+              <>
+                <span className="inline-block px-2.5 py-1 rounded bg-red-500/10 text-red-400 font-mono text-xs font-bold border border-red-500/20 mb-1">
+                  Needs Optimization
+                </span>
+                <p className="text-xs text-[#c3c5d9] mt-1">Missing key sections or quantified metrics.</p>
+              </>
+            )}
           </div>
         </div>
 
@@ -171,9 +191,9 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
           </div>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-4xl font-bold font-geist text-white">{versions.length}</span>
-            <span className="text-xs font-mono text-[#8d90a2] ml-auto">Active</span>
+            <span className="text-xs font-mono text-[#8d90a2] ml-auto">Saved</span>
           </div>
-          <p className="text-xs text-[#c3c5d9] mt-2">Master + {versions.filter(v => v.isTailored).length} Job-Tailored</p>
+          <p className="text-xs text-[#c3c5d9] mt-2">Master + {versions.filter(v => v.isTailored).length} Tailored</p>
         </div>
 
         {/* Card 5: Recommended Improvements */}
@@ -190,7 +210,7 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
               {(analysis.aiSuggestions || []).filter(s => s.status === 'pending').length}
             </span>
             <span className="text-xs font-mono text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded ml-auto">
-              +18 ATS Score
+              +{(analysis.aiSuggestions || []).filter(s => s.status === 'pending').reduce((sum, s) => sum + (s.expectedAtsIncrease || 0), 0)} ATS Pts
             </span>
           </div>
           <p className="text-xs text-[#c3c5d9] mt-2">One-click AI optimization ready</p>
@@ -203,7 +223,7 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
             <Clock className="w-5 h-5 text-[#c3c5d9]" />
           </div>
           <div className="mt-2">
-            <span className="text-lg font-bold font-geist text-white">{activeVersion.uploadedAt}</span>
+            <span className="text-lg font-bold font-geist text-white">{activeVersion.uploadedAt || 'Saved'}</span>
             <p className="text-xs text-[#c3c5d9] mt-1">Auto-synced with profile</p>
           </div>
         </div>
@@ -218,25 +238,30 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
             <Briefcase className="w-5 h-5 text-[#4cd7f6] group-hover:scale-110 transition-transform" />
           </div>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-4xl font-bold font-geist text-[#4cd7f6]">{activeVersion.jobsMatchedCount || 18}</span>
+            <span className="text-4xl font-bold font-geist text-[#4cd7f6]">{activeVersion.jobsMatchedCount ?? 0}</span>
             <span className="text-xs font-mono text-green-400 bg-green-500/10 px-2 py-0.5 rounded ml-auto">
-              &gt;85% Match
+              Live Matches
             </span>
           </div>
           <p className="text-xs text-[#c3c5d9] mt-2">Connected to Job Hub</p>
         </div>
 
-        {/* Card 8: Downloads */}
-        <div className="bg-[#191b25] border border-[#434656]/30 rounded-xl p-5 shadow-lg flex flex-col justify-between">
+        {/* Card 8: Detected Skills */}
+        <div 
+          onClick={() => onSelectTab('ats-keywords')}
+          className="bg-[#191b25] border border-[#434656]/30 hover:border-green-500/50 rounded-xl p-5 transition-all cursor-pointer group shadow-lg flex flex-col justify-between"
+        >
           <div className="flex justify-between items-start mb-2">
-            <span className="text-xs font-mono text-[#c3c5d9] uppercase tracking-wider">Total Downloads</span>
-            <Download className="w-5 h-5 text-[#b7c4ff]" />
+            <span className="text-xs font-mono text-[#c3c5d9] uppercase tracking-wider">Verified Skills</span>
+            <CheckCircle2 className="w-5 h-5 text-green-400 group-hover:scale-110 transition-transform" />
           </div>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-4xl font-bold font-geist text-white">14</span>
-            <span className="text-xs font-mono text-[#8d90a2] ml-auto">PDF / DOCX</span>
+            <span className="text-4xl font-bold font-geist text-green-400">
+              {(analysis.keywordList || []).filter(k => k.detected && (k.foundInResume ?? true) && (k.frequency ?? 1) > 0).length}
+            </span>
+            <span className="text-xs font-mono text-[#8d90a2] ml-auto">Technologies</span>
           </div>
-          <p className="text-xs text-[#c3c5d9] mt-2">ATS-compliant formatting</p>
+          <p className="text-xs text-[#c3c5d9] mt-2">Evidence verified by ATS scanner</p>
         </div>
       </div>
 
@@ -391,8 +416,8 @@ export const ResumeDashboardTab: React.FC<ResumeDashboardTabProps> = ({
             <div className="space-y-4 relative pl-4 border-l border-[#434656]/40 ml-2">
               <div className="relative">
                 <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#0052ff] ring-4 ring-[#191b25]" />
-                <p className="text-xs font-medium text-[#e1e1ef]">Resume "Software Engineer - Master" analyzed by AI</p>
-                <p className="text-[10px] font-mono text-[#8d90a2]">Score increased from 77 to 85 • Today 2:45 PM</p>
+                <p className="text-xs font-medium text-[#e1e1ef]">Resume "{activeVersion.versionName}" analyzed by AI</p>
+                <p className="text-[10px] font-mono text-[#8d90a2]">ATS Score: {activeVersion.score ?? 0}% • {activeVersion.uploadedAt || 'Recently'}</p>
               </div>
               <div className="relative">
                 <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#4cd7f6] ring-4 ring-[#191b25]" />

@@ -415,15 +415,19 @@ function MainAppContent() {
               body: JSON.stringify({ fileData: base64, fileName: file.name })
             });
             const data = await res.json();
-            text = data.text || data.extractedText || `Resume Content from ${file.name}`;
-          } catch (e) {
-            text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
+            if (!res.ok || data.extractionSuccess === false || !data.text) {
+              throw new Error(data.error || 'Failed to extract text from resume document');
+            }
+            text = data.text || data.extractedText;
+          } catch (e: any) {
+            console.error('Failed to parse uploaded resume in onboarding:', e);
+            alert(e.message || 'Unable to extract text from the uploaded file. Please ensure it contains selectable text.');
+            return;
           }
-          if (!text || text.trim().length === 0) {
-            text = `Resume Content from ${file.name}\nSkills & Experience extracted successfully.`;
+          if (text && text.trim().length > 0) {
+            await uploadResume(text, file.name);
+            updateProfileDetails({ hasUploadedResume: true });
           }
-          await uploadResume(text, file.name);
-          updateProfileDetails({ hasUploadedResume: true });
         }}
       />
     );
@@ -492,6 +496,7 @@ function MainAppContent() {
               onUpdateStatus={() => {}}
               onAddApplication={() => {}}
               resumeText={profile.resumeText || userVersions[0]?.content || ''}
+              recommendations={recommendations}
               user={profile}
               onUpdateUser={updateProfileDetails}
               onNavigateTab={handleNavigate}

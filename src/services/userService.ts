@@ -316,7 +316,8 @@ export class UserService {
     template?: string;
     versionId?: string;
     versionName?: string;
-  }): Promise<boolean> {
+    analysisData?: any;
+  }): Promise<{ success: boolean; analysisData?: any; score?: number }> {
     try {
       const token = this.getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -327,10 +328,11 @@ export class UserService {
         headers,
         body: JSON.stringify(payload)
       });
-      return res.ok;
+      const json = await res.json();
+      return { success: res.ok && json.success, analysisData: json.analysisData, score: json.score };
     } catch (err) {
       console.error('Error uploading resume API:', err);
-      return false;
+      return { success: false };
     }
   }
 
@@ -351,21 +353,69 @@ export class UserService {
     }
   }
 
-  public static async updateResumeVersionScoreApi(versionId: string, score: number): Promise<boolean> {
+  public static async updateResumeVersionScoreApi(versionId: string, score: number, analysisData?: any): Promise<boolean> {
     try {
       const token = this.getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/auth/resume', {
-        method: 'POST',
+      const res = await fetch(`/api/auth/resume-version/${encodeURIComponent(versionId)}/score`, {
+        method: 'PATCH',
         headers,
-        body: JSON.stringify({ versionId, score, fileName: '', fileText: '' })
+        body: JSON.stringify({ score, analysisData })
       });
       return res.ok;
     } catch (err) {
       console.error('Error updating resume version score API:', err);
       return false;
+    }
+  }
+
+  public static async matchResumeJobsApi(payload: {
+    resumeVersionId?: string;
+    resumeText: string;
+    skills?: string[];
+    targetRole?: string;
+  }): Promise<any[] | null> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/jobs/match-resume', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.recommendations;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error in matchResumeJobsApi:', err);
+      return null;
+    }
+  }
+
+  public static async getJobMatchesApi(resumeVersionId: string): Promise<any[] | null> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/jobs/matches/${encodeURIComponent(resumeVersionId)}`, {
+        method: 'GET',
+        headers
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.recommendations;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error in getJobMatchesApi:', err);
+      return null;
     }
   }
 

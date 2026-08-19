@@ -38,7 +38,7 @@ export const ResumeBuilderTab: React.FC<ResumeBuilderTabProps> = ({
   );
 
   const [formData, setFormData] = useState<ParsedResumeData>(
-    activeVersion.parsedData || {
+    activeVersion?.parsedData || {
       fullName: user.name || "",
       email: user.email || "",
       phone: user.phone || "",
@@ -46,48 +46,21 @@ export const ResumeBuilderTab: React.FC<ResumeBuilderTabProps> = ({
       gitHub: user.gitHubUrl || "",
       portfolio: user.portfolioUrl || "",
       summary: "",
-      education: [
-        { id: 'edu_1', degree: "B.S. in Computer Science", institution: "Stanford University", year: "2018", gpa: "3.9/4.0" }
-      ],
-      experience: [
-        {
-          id: 'exp_1',
-          company: "Apple",
-          role: "Senior Software Engineer",
-          period: "2021 - Present",
-          location: "Cupertino, CA",
-          bullets: [
-            "Architected and deployed highly available distributed streaming services handling 10k+ req/sec using Kafka & Redis.",
-            "Led frontend performance migration to Next.js and TypeScript, reducing p99 latency by 35%.",
-            "Automated AWS multi-region infrastructure (EC2, EKS, S3) with Terraform CI/CD pipelines."
-          ]
-        },
-        {
-          id: 'exp_2',
-          company: "TechCorp",
-          role: "Software Engineer II",
-          period: "2018 - 2021",
-          location: "San Francisco, CA",
-          bullets: [
-            "Engineered high-throughput GraphQL APIs processing 50M daily requests with Node.js and PostgreSQL.",
-            "Mentored 4 junior engineers and implemented automated E2E testing using Playwright."
-          ]
-        }
-      ],
-      projects: [
-        {
-          id: 'proj_1',
-          name: "CloudScale Engine",
-          description: "High-performance distributed event broker built with Go and WebSockets.",
-          technologies: ["Go", "Kafka", "Docker", "Kubernetes"]
-        }
-      ],
-      skills: ["TypeScript", "React", "Next.js", "Node.js", "Go", "Python", "AWS", "Docker", "Kubernetes", "PostgreSQL", "Kafka", "Redis"],
-      certifications: ["AWS Certified Solutions Architect"],
-      languages: ["English (Native)", "Spanish (Professional)"],
-      achievements: ["Top 1% Contributor on GitHub"]
+      education: [],
+      experience: [],
+      projects: [],
+      skills: user.skills || [],
+      certifications: user.certifications || [],
+      languages: user.languages || ["English"],
+      achievements: []
     }
   );
+
+  React.useEffect(() => {
+    if (activeVersion?.parsedData) {
+      setFormData(activeVersion.parsedData);
+    }
+  }, [activeVersion?.id]);
 
   const handleFieldChange = (field: keyof ParsedResumeData, value: any) => {
     const updated = { ...formData, [field]: value };

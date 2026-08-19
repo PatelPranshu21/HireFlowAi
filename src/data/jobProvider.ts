@@ -1,4 +1,5 @@
 import { CompanyInfo, JobRecommendation, UserProfile, JobPreferences } from '../types';
+import { JobMatchingService } from '../services/jobMatchingService';
 
 export const mockCompanies: CompanyInfo[] = [
   {
@@ -776,57 +777,126 @@ export const mockJobsList: JobRecommendation[] = [
       'Practice Machine Coding interview rounds (building low level class design & working code).',
       'Focus system design on distributed payment transactions, idempotency, and state locking.'
     ]
+  },
+  {
+    id: 'job_meta_python',
+    companyId: 'meta',
+    title: 'Senior Backend Engineer - Python & Django Platform',
+    company: 'Meta',
+    companyLogo: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?auto=format&fit=crop&q=80&w=120',
+    location: 'Menlo Park, CA (Hybrid or Remote)',
+    matchScore: 0,
+    matchConfidence: 'High',
+    tags: ['Python', 'Django', 'PostgreSQL', 'REST APIs', 'React'],
+    salary: '$190,000 - $310,000 / yr + Equity',
+    salaryRange: '$190k - $310k',
+    description: 'Design and optimize core high-throughput web platform services using Python, Django, PostgreSQL databases, and modern REST APIs supporting billions of interactions daily.',
+    responsibilities: [
+      'Architect resilient backend services in Python and Django.',
+      'Optimize query execution plans and index strategy for large PostgreSQL clusters.',
+      'Collaborate with frontend engineers building React web interfaces.'
+    ],
+    requirements: [
+      '5+ years building backend web applications with Python and Django.',
+      'Strong expertise in PostgreSQL relational database design, transactions, and performance tuning.',
+      'Hands-on experience developing and securing REST APIs.'
+    ],
+    benefits: [
+      'Comprehensive family healthcare & wellness stipends.',
+      '401(k) matching and annual stock grants.',
+      'Flexible remote/hybrid work balance.'
+    ],
+    hiringProcess: [
+      'Technical Recruiter Screen',
+      'Data Structures & Algorithms in Python Screen',
+      'System Architecture & Database Design Loop'
+    ],
+    requiredSkills: ['Python', 'Django', 'PostgreSQL', 'REST APIs', 'React'],
+    missingSkills: ['Docker'],
+    experienceRequired: '5+ Years Experience',
+    jobType: 'Full-Time',
+    companyDescription: 'Meta connects billions of people worldwide across Instagram, WhatsApp, Messenger, and VR.',
+    postedDate: 'Just now',
+    recommendationReason: 'Direct alignment with Python, Django, PostgreSQL, and React web engineering.',
+    applyUrl: 'https://www.metacareers.com',
+    companyWebsite: 'https://meta.com',
+    preparationTips: [
+      'Review Django ORM query optimization and select_related/prefetch_related techniques.',
+      'Focus system design on relational database indexing and RESTful design.'
+    ]
+  },
+  {
+    id: 'job_flipkart_java',
+    companyId: 'flipkart',
+    title: 'Senior Backend Engineer - High Scale Java Microservices',
+    company: 'Flipkart',
+    companyLogo: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=120',
+    location: 'Bengaluru, India (Hybrid)',
+    matchScore: 0,
+    matchConfidence: 'High',
+    tags: ['Java', 'Spring Boot', 'MySQL', 'Microservices', 'Kafka', 'AWS'],
+    salary: '₹30,00,000 - ₹62,00,000 / yr',
+    salaryRange: '₹30L - ₹62L',
+    description: 'Build enterprise order management and supply chain microservices processing peak holiday sales using Java, Spring Boot, MySQL, and Kafka event streaming.',
+    responsibilities: [
+      'Design event-driven Java Spring Boot microservices handling 25,000+ orders/second.',
+      'Tune JVM garbage collection, concurrency locks, and MySQL transactional isolation.',
+      'Deploy fault-tolerant services on AWS cloud infrastructure.'
+    ],
+    requirements: [
+      '5+ years developing large-scale backend services using Java and Spring Boot.',
+      'Deep experience in MySQL database scaling, sharding, and caching.',
+      'Hands-on experience with Kafka message queues and microservices architecture.'
+    ],
+    benefits: [
+      'Annual performance incentive bonus and ESOP wealth pool.',
+      'Comprehensive family medical coverage.',
+      'Higher education sponsorship and technical book allowances.'
+    ],
+    hiringProcess: [
+      'Initial Screening & Coding Round',
+      'Low Level Design / Machine Coding (Java)',
+      'High Level System Design & Hiring Manager Discussion'
+    ],
+    requiredSkills: ['Java', 'Spring Boot', 'MySQL', 'Microservices', 'Kafka'],
+    missingSkills: ['Kubernetes'],
+    experienceRequired: '5+ Years Experience',
+    jobType: 'Full-Time',
+    companyDescription: 'Flipkart is India’s leading e-commerce and retail supply chain platform.',
+    postedDate: '1 day ago',
+    recommendationReason: 'Strong alignment with Java, Spring Boot, MySQL, and Kafka distributed microservices experience.',
+    applyUrl: 'https://www.flipkartcareers.com',
+    companyWebsite: 'https://flipkart.com',
+    preparationTips: [
+      'Practice Low Level Design (LLD) using SOLID principles and design patterns in Java.',
+      'Review Java multi-threading, ExecutorService, and lock-free concurrency.'
+    ]
   }
 ];
 
-// Helper: Calculate or update AI match score dynamically based on user profile and preferences
+// Helper: Calculate deterministic match score dynamically based on user profile and preferences
 export function calculateDynamicMatchScore(job: JobRecommendation, user: UserProfile): {
   score: number;
-  confidence: 'Very High' | 'High' | 'Moderate';
+  confidence: 'Very High' | 'High' | 'Moderate' | 'Low';
   matchingSkills: string[];
   missingSkills: string[];
   reason: string;
 } {
-  let score = job.matchScore || 0;
-  const reqSkills = job.requiredSkills || [];
-  const prefs = user.preferences;
+  const resumeText = user.resumeText || user.primaryResumeText || '';
+  const skills = user.skills || [];
 
-  const matchingSkills: string[] = [];
-  const missingSkills: string[] = [];
-
-  // Match against target role
-  if (user.targetRole && job.title.toLowerCase().includes(user.targetRole.toLowerCase().split(' ')[0])) {
-    score += 4;
-  }
-
-  // Preference boosters
-  if (prefs) {
-    if (prefs.preferredCompanies && prefs.preferredCompanies.includes(job.company)) {
-      score += 5;
-    }
-    if (prefs.remotePreference && prefs.remotePreference !== 'Any') {
-      if (job.location.toLowerCase().includes(prefs.remotePreference.toLowerCase())) {
-        score += 3;
-      }
-    }
-    if (prefs.preferredCities && prefs.preferredCities.some(city => job.location.toLowerCase().includes(city.toLowerCase()))) {
-      score += 3;
-    }
-  }
-
-  // Normalize score between 65 and 99
-  score = Math.min(99, Math.max(68, score));
-
-  let confidence: 'Very High' | 'High' | 'Moderate' = 'High';
-  if (score >= 92) confidence = 'Very High';
-  else if (score < 82) confidence = 'Moderate';
+  const match = JobMatchingService.calculateJobMatch(
+    resumeText,
+    skills,
+    job
+  );
 
   return {
-    score,
-    confidence,
-    matchingSkills: reqSkills.slice(0, 3),
-    missingSkills: job.missingSkills || ['Docker', 'AWS'],
-    reason: job.recommendationReason || `Strong alignment with your profile as a ${user.title || 'Software Engineer'}.`
+    score: match.matchScore,
+    confidence: match.confidence,
+    matchingSkills: match.matchedSkills,
+    missingSkills: match.missingSkills,
+    reason: match.whyMatch
   };
 }
 
@@ -837,61 +907,5 @@ export function getRecommendationsForResume(
   skills: string[],
   targetRole: string = 'Software Engineer'
 ): JobRecommendation[] {
-  const textLower = (resumeText || '').toLowerCase();
-  const userSkillsLower = (skills || []).map(s => s.toLowerCase());
-
-  return jobs.map(job => {
-    const jobTitleLower = job.title.toLowerCase();
-    const jobCompanyLower = job.company.toLowerCase();
-    const jobTagsLower = (job.tags || []).map(t => t.toLowerCase());
-    const reqSkillsLower = (job.requiredSkills || []).map(r => r.toLowerCase());
-
-    let matchPoints = 60;
-
-    // 1. Title alignment
-    const roleWords = targetRole.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    for (const word of roleWords) {
-      if (jobTitleLower.includes(word)) {
-        matchPoints += 8;
-      }
-    }
-
-    // 2. Skills overlap
-    const allJobSkills = [...new Set([...jobTagsLower, ...reqSkillsLower])];
-    let matchedSkillsCount = 0;
-
-    const matchingSkillsList: string[] = [];
-    const missingSkillsList: string[] = [];
-
-    allJobSkills.forEach(js => {
-      const isMatched = userSkillsLower.some(us => us.includes(js) || js.includes(us)) || textLower.includes(js);
-      if (isMatched) {
-        matchedSkillsCount++;
-        matchingSkillsList.push(js);
-      } else {
-        missingSkillsList.push(js);
-      }
-    });
-
-    if (allJobSkills.length > 0) {
-      const ratio = matchedSkillsCount / allJobSkills.length;
-      matchPoints += Math.round(ratio * 30);
-    }
-
-    if (textLower.includes(jobCompanyLower)) {
-      matchPoints += 5;
-    }
-
-    const finalScore = Math.min(98, Math.max(62, matchPoints));
-    const confidence: 'Very High' | 'High' | 'Moderate' = finalScore >= 90 ? 'Very High' : finalScore >= 80 ? 'High' : 'Moderate';
-
-    return {
-      ...job,
-      matchScore: finalScore,
-      matchConfidence: confidence,
-      requiredSkills: matchingSkillsList.length > 0 ? matchingSkillsList : job.requiredSkills,
-      missingSkills: missingSkillsList.length > 0 ? missingSkillsList.slice(0, 3) : job.missingSkills,
-      recommendationReason: `Matched against active resume skills: ${matchingSkillsList.slice(0, 4).join(', ') || 'core engineering keywords'}.`
-    };
-  }).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  return JobMatchingService.matchResumeAgainstJobs(resumeText, skills, jobs, targetRole);
 }

@@ -149,11 +149,11 @@ export const ResumeVersionManagerTab: React.FC<ResumeVersionManagerTabProps> = (
                 <div className="grid grid-cols-3 gap-2 bg-[#11131c] p-3 rounded-xl border border-[#434656]/20 mb-4">
                   <div className="text-center">
                     <span className="text-[10px] font-mono text-[#8d90a2] block">ATS Score</span>
-                    <span className="text-lg font-bold font-mono text-[#4cd7f6]">{v.score}%</span>
+                    <span className="text-lg font-bold font-mono text-[#4cd7f6]">{v.score !== undefined && v.score > 0 ? `${v.score}%` : '0%'}</span>
                   </div>
                   <div className="text-center border-x border-[#434656]/20">
                     <span className="text-[10px] font-mono text-[#8d90a2] block">Matched Jobs</span>
-                    <span className="text-lg font-bold font-mono text-white">{v.jobsMatchedCount || 12}</span>
+                    <span className="text-lg font-bold font-mono text-white">{v.jobsMatchedCount ?? 0}</span>
                   </div>
                   <div className="text-center">
                     <span className="text-[10px] font-mono text-[#8d90a2] block">Template</span>

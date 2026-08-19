@@ -1,4 +1,5 @@
 import { AIProviderConfig } from '../types';
+import { UserService } from './userService';
 
 /**
  * AI Provider Abstraction Layer
@@ -25,6 +26,15 @@ export class AiProviderService {
     return this.config;
   }
 
+  private static getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = UserService.getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
   /**
    * Generic prompt runner through configured provider backend API
    */
@@ -32,7 +42,7 @@ export class AiProviderService {
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           prompt,
           providerConfig: this.config,
@@ -55,7 +65,7 @@ export class AiProviderService {
     try {
       const res = await fetch('/api/ai/analyze-resume', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ resumeText, targetRole, resumeVersionId, providerConfig: this.config })
       });
       if (!res.ok) throw new Error('Resume Analysis API error');
@@ -73,7 +83,7 @@ export class AiProviderService {
     try {
       const res = await fetch('/api/ai/match-job', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ resumeText, jobDescription, jobTitle, company, providerConfig: this.config })
       });
       if (!res.ok) throw new Error('Job Match API error');
@@ -91,7 +101,7 @@ export class AiProviderService {
     try {
       const res = await fetch('/api/ai/parse-resume', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ resumeText, providerConfig: this.config })
       });
       if (!res.ok) throw new Error('Resume Parse API error');
@@ -109,7 +119,7 @@ export class AiProviderService {
     try {
       const res = await fetch('/api/ai/tailor-resume', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ resumeContent, jobDescription, targetRole, company, providerConfig: this.config })
       });
       if (!res.ok) throw new Error('Tailor Resume API error');

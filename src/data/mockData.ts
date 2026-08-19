@@ -9,7 +9,6 @@ import {
   InterviewQuestion,
   NotificationItem
 } from '../types';
-import { mockJobsList } from './jobProvider';
 
 // Calculate 3-day trial expiry date relative to now
 const now = new Date();
@@ -118,7 +117,7 @@ export const initialTasks: TaskItem[] = [
   }
 ];
 
-export const initialJobRecommendations: JobRecommendation[] = mockJobsList;
+export const initialJobRecommendations: JobRecommendation[] = [];
 
 export const initialActivityLogs: ActivityLog[] = [];
 
@@ -137,165 +136,7 @@ export const defaultResumeAnalysis: ResumeAnalysisResult = {
   aiSuggestions: []
 };
 
-export const defaultResumeVersions: ResumeVersion[] = [
-  {
-    id: 'v2',
-    versionName: 'Software Engineer - Master',
-    fileName: 'master_resume_v2.pdf',
-    uploadedAt: 'Today, 2:45 PM',
-    fileSize: '184 KB',
-    score: 85,
-    template: 'modern',
-    jobsMatchedCount: 18,
-    isTailored: false,
-    targetRole: 'Senior Software Engineer',
-    parsedData: {
-      fullName: 'Parnshu Patel',
-      email: 'pranshupatel3222@gmail.com',
-      phone: '+1 (555) 234-5678',
-      linkedIn: 'https://linkedin.com/in/alex-dev',
-      gitHub: 'https://github.com/alex-dev-lead',
-      portfolio: 'https://alexmorgan.dev',
-      summary: 'Passionate Senior Engineer with 7+ years of experience building scalable web applications, microservices, and cloud infrastructure.',
-      education: [
-        { id: 'edu_1', degree: 'B.S. in Computer Science', institution: 'Stanford University', year: '2018', gpa: '3.9 / 4.0' }
-      ],
-      experience: [
-        {
-          id: 'exp_1',
-          company: 'Apple',
-          role: 'Senior Software Engineer',
-          period: '2021 - Present',
-          location: 'Cupertino, CA',
-          bullets: [
-            'Built backend services for streaming media processing.',
-            'Led frontend migration to Next.js and TypeScript, reducing load time by 35%.',
-            'Managed cloud infrastructure deployment and maintenance.'
-          ]
-        },
-        {
-          id: 'exp_2',
-          company: 'TechCorp Inc.',
-          role: 'Full Stack Developer',
-          period: '2018 - 2021',
-          location: 'San Francisco, CA',
-          bullets: [
-            'Developed React dashboards for real-time analytics serving 250k daily active users.',
-            'Implemented RESTful APIs and PostgreSQL database schemas.'
-          ]
-        }
-      ],
-      projects: [
-        {
-          id: 'proj_1',
-          name: 'CloudScale Event Broker',
-          description: 'High-throughput event streaming engine handling real-time data sync.',
-          technologies: ['Go', 'Kafka', 'Docker', 'Kubernetes']
-        }
-      ],
-      skills: ['TypeScript', 'JavaScript', 'Python', 'SQL', 'Go', 'React', 'Next.js', 'Node.js', 'Express', 'Tailwind CSS', 'Docker', 'AWS', 'Git', 'Kafka', 'Redis'],
-      certifications: ['AWS Certified Solutions Architect', 'Certified Kubernetes Application Developer'],
-      languages: ['English (Native)', 'Spanish (Professional)'],
-      achievements: ['Co-author of 2 cloud optimization technical papers', 'Winner of Apple Annual Innovation Hackathon 2022']
-    },
-    content: `ALEX MORGAN
-Senior Software Engineer | San Francisco, CA | alex.dev@hireflow.ai
-
-SUMMARY
-Passionate Senior Engineer with 7+ years of experience building scalable web applications and cloud microservices.
-
-EXPERIENCE
-Apple - Senior Software Engineer (2021 - Present)
-• Built backend services for streaming media processing.
-• Led frontend migration to Next.js and TypeScript, reducing load time by 35%.
-• Managed cloud infrastructure deployment and maintenance.
-
-TechCorp Inc. - Full Stack Developer (2018 - 2021)
-• Developed React dashboards for real-time analytics serving 250k daily active users.
-• Implemented RESTful APIs and PostgreSQL database schemas.
-
-SKILLS
-Languages: TypeScript, JavaScript, Python, SQL, Go
-Frameworks: React, Next.js, Node.js, Express, Tailwind CSS
-Tools: Docker, AWS, Git, Kafka, Redis`
-  },
-  {
-    id: 'v_tailored_1',
-    versionName: 'Tailored: Frontend Engineer at Stripe',
-    fileName: 'alex_resume_stripe_frontend.pdf',
-    uploadedAt: 'Yesterday, 4:15 PM',
-    fileSize: '192 KB',
-    score: 89,
-    template: 'executive',
-    jobsMatchedCount: 12,
-    isTailored: true,
-    targetRole: 'Senior Frontend Engineer',
-    targetCompany: 'Stripe',
-    parsedData: {
-      fullName: 'Alex Morgan',
-      email: 'alex.dev@hireflow.ai',
-      phone: '+1 (555) 234-5678',
-      linkedIn: 'https://linkedin.com/in/alex-dev',
-      gitHub: 'https://github.com/alex-dev-lead',
-      portfolio: 'https://alexmorgan.dev',
-      summary: 'Senior Frontend Architect with 7+ years driving design system engineering, React performance optimization, and high-conversion payment flow UI.',
-      education: [
-        { id: 'edu_1', degree: 'B.S. in Computer Science', institution: 'Stanford University', year: '2018', gpa: '3.9 / 4.0' }
-      ],
-      experience: [
-        {
-          id: 'exp_1',
-          company: 'Apple',
-          role: 'Senior Frontend Lead',
-          period: '2021 - Present',
-          location: 'Cupertino, CA',
-          bullets: [
-            'Spearheaded web architecture migration to React 19 and Next.js, slashing bundle sizes by 42%.',
-            'Designed accessible UI component design system adopted by 120+ internal engineers.',
-            'Optimized Web Vitals score to 99+ across Apple services checkout portals.'
-          ]
-        }
-      ],
-      projects: [
-        {
-          id: 'proj_1',
-          name: 'Stripe-Like Component Library',
-          description: 'High-performance React UI design system built with Tailwind and Framer Motion.',
-          technologies: ['React', 'TypeScript', 'Tailwind CSS', 'Vite']
-        }
-      ],
-      skills: ['TypeScript', 'React.js', 'Next.js', 'Tailwind CSS', 'Design Systems', 'Web Vitals', 'GraphQL', 'Vite', 'Jest', 'Cypress'],
-      certifications: ['AWS Certified Developer'],
-      languages: ['English', 'Spanish'],
-      achievements: ['Speaker at React Summit 2024']
-    },
-    content: `ALEX MORGAN - TAILORED STRIPE FRONTEND
-Senior Frontend Engineer | San Francisco, CA | alex.dev@hireflow.ai
-
-SUMMARY
-Senior Frontend Architect with 7+ years driving design system engineering, React performance optimization, and high-conversion payment flow UI.
-
-EXPERIENCE
-Apple - Senior Frontend Lead (2021 - Present)
-• Spearheaded web architecture migration to React 19 and Next.js, slashing bundle sizes by 42%.
-• Designed accessible UI component design system adopted by 120+ internal engineers.
-• Optimized Web Vitals score to 99+ across Apple services checkout portals.`
-  },
-  {
-    id: 'v1',
-    versionName: 'alex_resume_v1.pdf',
-    fileName: 'alex_resume_v1.pdf',
-    uploadedAt: '3 days ago',
-    fileSize: '142 KB',
-    score: 65,
-    template: 'minimalist',
-    jobsMatchedCount: 8,
-    isTailored: false,
-    targetRole: 'Full Stack Developer',
-    content: `Alex Dev Resume v1
-Software Developer with experience in web apps.`
-  }
-];
+export const defaultResumeVersions: ResumeVersion[] = [];
 
 export const initialApplications: ApplicationCard[] = [];
 

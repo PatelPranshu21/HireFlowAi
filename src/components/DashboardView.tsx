@@ -112,7 +112,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       id: 'roles', 
       label: 'Select Preferred Roles', 
       done: step4Done, 
-      actionLabel: step4Done ? `${user.preferences?.preferredRoles?.length || 1} Selected` : 'Pick Roles',
+      actionLabel: step4Done ? `${user.preferences?.preferredRoles?.length ?? 0} Selected` : 'Pick Roles',
       subtitle: step4Done ? user.preferences?.preferredRoles?.join(', ') : 'Choose 1-3 job titles to personalize recommendations' 
     },
     { 
@@ -517,7 +517,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="h-1 flex-1 bg-[#434656]/30 rounded-full" />
               </div>
               <span className="text-xs font-mono text-[#d0bcff] font-medium">
-                Readiness: {user.analytics?.careerReadinessScore || 88}%
+                Readiness: {user.analytics?.careerReadinessScore ?? 0}%
               </span>
             </div>
           )}
@@ -558,7 +558,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {applicationsState === 'populated' && (
             <div className="flex flex-col">
               <span className="text-4xl font-bold font-geist text-white">
-                {user.appliedJobIds?.length || 4}
+                {user.appliedJobIds?.length ?? 0}
               </span>
               <span className="text-xs text-[#a1a3b8] font-mono mt-1">Active tracked applications</span>
             </div>
@@ -720,32 +720,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {/* POPULATED STATE */}
           {recommendationsState === 'populated' && (
             <div className="flex flex-col gap-3">
-              {(recommendations.length > 0 ? recommendations : [
-                {
-                  id: 'j1',
-                  title: 'Senior Full Stack Engineer',
-                  company: 'Stripe',
-                  location: 'San Francisco, CA (Hybrid)',
-                  matchScore: 94,
-                  tags: ['React 19', 'TypeScript', 'Node.js']
-                },
-                {
-                  id: 'j2',
-                  title: 'Staff Cloud Architect',
-                  company: 'Datadog',
-                  location: 'Remote',
-                  matchScore: 89,
-                  tags: ['Distributed Systems', 'Go', 'Docker']
-                },
-                {
-                  id: 'j3',
-                  title: 'AI Systems Tech Lead',
-                  company: 'OpenAI',
-                  location: 'San Francisco, CA',
-                  matchScore: 86,
-                  tags: ['Python', 'LLMs', 'PyTorch']
-                }
-              ]).slice(0, 3).map((job) => (
+              {recommendations.slice(0, 3).map((job) => (
                 <div 
                   key={job.id}
                   onClick={() => onNavigateTab('job-suite')}
@@ -759,7 +734,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <p className="text-xs font-mono text-[#a1a3b8] mb-3">{job.company} • {job.location}</p>
                   <div className="flex gap-2">
-                    {job.tags.slice(0, 2).map((tag, idx) => (
+                    {job.tags?.slice(0, 2).map((tag, idx) => (
                       <span key={idx} className="text-[10px] bg-[#11131c] border border-[#434656]/30 rounded-md px-2 py-0.5 text-[#e1e1ef]">
                         {tag}
                       </span>

@@ -72,14 +72,14 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
             
             {/* Matching Skills */}
             <div className="bg-[#11131c] border border-[#434656]/20 rounded-xl p-4">
-              <h5 className="text-xs font-mono font-bold text-[#8d90a2] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4 text-[#8d90a2]" />
-                Matching Resume Skills
+              <h5 className="text-xs font-mono font-bold text-[#4cd7f6] uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 text-[#4cd7f6]" />
+                Matched Skills ({job.matchedSkills?.length || reqSkills.length})
               </h5>
               <div className="flex flex-wrap gap-1.5">
-                {reqSkills.map((sk, idx) => (
-                  <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#0052ff]/10 text-[#4cd7f6] border border-[#0052ff]/30">
-                    {sk}
+                {(job.matchedSkills || reqSkills).map((sk, idx) => (
+                  <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#0052ff]/15 text-[#4cd7f6] border border-[#0052ff]/30">
+                    ✓ {sk}
                   </span>
                 ))}
               </div>
@@ -89,15 +89,15 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
             <div className="bg-[#11131c] border border-[#434656]/20 rounded-xl p-4">
               <h5 className="text-xs font-mono font-bold text-[#d0bcff] uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-[#571bc1]" />
-                Skill Gap Opportunities
+                Missing Required Skills ({missingSkills.length})
               </h5>
               {missingSkills.length === 0 ? (
-                <p className="text-xs font-mono text-[#a1a3b8]">No major skill gaps detected!</p>
+                <p className="text-xs font-mono text-[#4cd7f6]">✓ 100% core skill coverage! No gaps detected.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {missingSkills.map((sk, idx) => (
                     <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40">
-                      + {sk}
+                      ○ {sk}
                     </span>
                   ))}
                 </div>
@@ -106,13 +106,36 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
 
           </div>
 
+          {/* Candidate Skills vs Job Requirements */}
+          <div className="bg-[#11131c] border border-[#434656]/20 rounded-xl p-4 space-y-3">
+            <h5 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <Target className="w-4 h-4 text-[#0052ff]" />
+              Candidate Profile Skills
+            </h5>
+            <div className="flex flex-wrap gap-1.5">
+              {(user.skills && user.skills.length > 0 ? user.skills : ['General Software Engineering']).map((s, idx) => (
+                <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#212433] text-[#c3c5d9] border border-[#434656]/30">
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+
           {/* Actionable Advice to Boost Score */}
           <div className="bg-[#11131c] border border-[#0052ff]/30 rounded-xl p-4 flex items-start gap-3">
             <Lightbulb className="w-5 h-5 text-[#0052ff] shrink-0 mt-0.5" />
             <div>
               <h5 className="text-xs font-mono font-bold text-white uppercase tracking-wider">How To Increase Match Score</h5>
               <p className="text-xs text-[#c3c5d9] mt-1 leading-relaxed">
-                Adding <span className="text-[#4cd7f6] font-bold font-mono">{missingSkills.slice(0, 2).join(', ') || 'Docker'}</span> to your resume or completing a quick project could raise your estimated interview callback probability by 12–18%.
+                {missingSkills.length > 0 ? (
+                  <>
+                    Adding <span className="text-[#4cd7f6] font-bold font-mono">{missingSkills.slice(0, 3).join(', ')}</span> to your resume or projects will directly maximize your interview callback match score.
+                  </>
+                ) : (
+                  <>
+                    Your profile strongly matches all stated technical requirements for this role.
+                  </>
+                )}
               </p>
             </div>
           </div>

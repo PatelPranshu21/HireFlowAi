@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { ApplicationCard, JobRecommendation, UserProfile, NotificationItem, JobPreferences, CompanyInfo } from '../types';
-import { mockJobsList, mockCompanies, calculateDynamicMatchScore } from '../data/jobProvider';
 import { CompanyModal } from './CompanyModal';
 import { WhyMatchModal } from './WhyMatchModal';
 import { JobDetailsModal } from './JobDetailsModal';
@@ -53,6 +52,7 @@ interface JobSuiteViewProps {
   onUpdateStatus: (id: string, newStatus: ApplicationCard['status']) => void;
   onAddApplication: (app: Omit<ApplicationCard, 'id'>) => void;
   resumeText: string;
+  recommendations?: JobRecommendation[];
   user?: UserProfile;
   onUpdateUser?: (updated: Partial<UserProfile>) => void;
   onNavigateTab?: (tab: any) => void;
@@ -66,6 +66,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   onUpdateStatus,
   onAddApplication,
   resumeText,
+  recommendations,
   user,
   onUpdateUser,
   onNavigateTab,
@@ -149,18 +150,21 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
     targetRole: 'Software Engineering'
   };
 
-  // Master Jobs List calculated with dynamic user preferences
+  // Master Jobs List strictly from active resume recommendations loaded from PostgreSQL
   const allJobs: JobRecommendation[] = useMemo(() => {
-    return mockJobsList.map(job => {
-      const match = calculateDynamicMatchScore(job, activeUser);
-      return {
-        ...job,
-        matchScore: match.score,
-        matchConfidence: match.confidence,
-        recommendationReason: match.reason
-      };
-    });
-  }, [activeUser]);
+    if (recommendations && recommendations.length > 0) {
+      return recommendations;
+    }
+    return [];
+  }, [recommendations]);
+
+  // Active Resume information
+  const activeResumeVersion = useMemo(() => {
+    if (!user?.resumeVersions || user.resumeVersions.length === 0) return null;
+    return user.resumeVersions.find(v => v.id === user.activeResumeVersionId) || user.resumeVersions[0];
+  }, [user]);
+
+  const activeResumeName = activeResumeVersion?.fileName || activeResumeVersion?.versionName || (hasResume ? 'Active Resume' : 'No Resume Uploaded');
 
   // Saved Jobs List
   const savedJobs = useMemo(() => {
@@ -177,7 +181,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
         const matchTitle = job.title.toLowerCase().includes(q);
         const matchCompany = job.company.toLowerCase().includes(q);
         const matchLoc = job.location.toLowerCase().includes(q);
-        const matchTags = job.tags.some(t => t.toLowerCase().includes(q));
+        const matchTags = job.tags?.some(t => t.toLowerCase().includes(q));
         const matchSkills = job.requiredSkills?.some(s => s.toLowerCase().includes(q));
         if (!matchTitle && !matchCompany && !matchLoc && !matchTags && !matchSkills) return false;
       }
@@ -236,10 +240,10 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
         jobId: job.id,
         jobTitle: job.title,
         company: job.company,
-        companyLogo: job.companyLogo || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120',
+        companyLogo: job.companyLogo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(job.company || 'Company')}`,
         status: 'applied',
         locationType: job.location.toLowerCase().includes('remote') ? 'Remote' : (job.location.toLowerCase().includes('hybrid') ? 'Hybrid' : 'On-site'),
-        priority: job.matchScore >= 92,
+        priority: job.matchScore >= 88,
         timeAgo: 'Just now',
         appliedDate: new Date().toISOString().split('T')[0],
         jobDescription: job.description,
@@ -257,20 +261,21 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   };
 
   const handleOpenCompanyByName = (companyName: string) => {
-    const comp = mockCompanies.find(c => c.name.toLowerCase() === companyName.toLowerCase()) || {
-      id: companyName.toLowerCase(),
+    const matchingJob = allJobs.find(j => j.company.toLowerCase() === companyName.toLowerCase());
+    const comp: CompanyInfo = {
+      id: companyName.toLowerCase().replace(/\s+/g, '_'),
       name: companyName,
-      logo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=120',
-      description: `${companyName} is a global tech leader innovating in software and artificial intelligence.`,
-      industry: 'Technology & Software',
-      headquarters: 'San Francisco, CA',
-      employees: '10,000+',
-      website: `https://www.${companyName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
-      openPositionsCount: 24,
-      benefits: ['Flexible Work Options', 'Health & Wellness', 'Equity Grants', 'Learning Stipend'],
-      interviewDifficulty: 'Hard' as const,
-      averageSalary: '$170,000 - $310,000 / yr',
-      aiRecommendation: 'Recommended for candidates with strong web systems and cloud experience.'
+      logo: matchingJob?.companyLogo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(companyName)}`,
+      description: matchingJob?.companyDescription || `${companyName} is hiring software engineering talent across India.`,
+      industry: (matchingJob as any)?.industry || 'Technology & Software',
+      headquarters: matchingJob?.location || 'India',
+      employees: '1,000+',
+      website: matchingJob?.companyWebsite || matchingJob?.applyUrl || '#',
+      openPositionsCount: allJobs.filter(j => j.company.toLowerCase() === companyName.toLowerCase()).length || 1,
+      benefits: matchingJob?.benefits || ['Comprehensive Health Insurance', 'Annual Learning Stipend', 'Flexible Remote / Hybrid'],
+      interviewDifficulty: 'Medium' as const,
+      averageSalary: matchingJob?.salary || 'Competitive',
+      aiRecommendation: matchingJob?.recommendationReason || 'Strong match for your skills and background.'
     };
     setSelectedCompanyModal(comp);
   };
@@ -456,15 +461,15 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                   <span className="text-xs font-mono uppercase text-[#4cd7f6] font-bold tracking-wider flex items-center gap-1.5 mb-1">
-                    <Sparkles className="w-4 h-4 text-[#4cd7f6]" /> Personalized AI Recommendation Engine
+                    <Sparkles className="w-4 h-4 text-[#4cd7f6]" /> Dynamic AI Resume-to-Job Matching Engine
                   </span>
                   <h2 className="text-2xl sm:text-3xl font-bold font-geist text-white">
-                    Good Morning, {activeUser.name.split(' ')[0]}.
+                    Recommended Jobs for <span className="text-[#4cd7f6]">{activeResumeName}</span>
                   </h2>
                   <p className="text-xs sm:text-sm font-mono text-[#e1e1ef] mt-2 leading-relaxed max-w-2xl">
                     {hasResume ? (
                       <>
-                        We found <span className="text-[#4cd7f6] font-bold">{allJobs.length} top opportunities</span> matching your profile today. You have a <span className="text-[#8d90a2] font-bold">92% match</span> for Senior Software Engineering roles.
+                        Found <span className="text-[#4cd7f6] font-bold">{allJobs.length} matching opportunities</span> across India dynamically ranked for this resume.
                       </>
                     ) : (
                       <>
@@ -491,7 +496,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                     }}
                     className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-lg flex items-center gap-2"
                   >
-                    <Upload className="w-4 h-4" /> {hasResume ? 'Re-analyze Resume' : 'Upload Resume'}
+                    <Upload className="w-4 h-4" /> {hasResume ? 'Upload / Switch Resume' : 'Upload Resume'}
                   </button>
                 </div>
               </div>
@@ -499,19 +504,19 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
               {/* Quick Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-[#434656]/30 relative z-10">
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">New Jobs Today</span>
-                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">{hasResume ? '12' : '0'}</span>
+                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Matched Jobs</span>
+                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">{allJobs.length}</span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">High Match (90%+)</span>
+                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">High Match (80%+)</span>
                   <span className="text-xl font-bold font-mono text-[#8d90a2] mt-0.5 block">
-                    {hasResume ? allJobs.filter(j => j.matchScore >= 90).length : 0}
+                    {hasResume ? allJobs.filter(j => j.matchScore >= 80).length : 0}
                   </span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Interviews Scheduled</span>
+                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Top Match Score</span>
                   <span className="text-xl font-bold font-mono text-[#d0bcff] mt-0.5 block">
-                    {applications.filter(a => a.status === 'interview' || a.status === 'hr_round').length}
+                    {allJobs.length > 0 ? `${allJobs[0].matchScore}%` : '0%'}
                   </span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
@@ -523,8 +528,10 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                   <span className="text-xl font-bold font-mono text-white mt-0.5 block">{applications.length}</span>
                 </div>
                 <div className="bg-[#11131c]/80 p-3.5 rounded-xl border border-[#434656]/20">
-                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Profile Completion</span>
-                  <span className="text-xl font-bold font-mono text-[#4cd7f6] mt-0.5 block">{hasResume ? '95%' : '20%'}</span>
+                  <span className="text-[10px] font-mono text-[#a1a3b8] uppercase block">Active Resume</span>
+                  <span className="text-xs font-bold font-mono text-[#4cd7f6] mt-1.5 block truncate" title={activeResumeName}>
+                    {activeResumeName}
+                  </span>
                 </div>
               </div>
             </div>
@@ -619,10 +626,14 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                       onChange={(e) => setRemoteFilter(e.target.value)}
                       className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
                     >
-                      <option value="all">All Locations</option>
-                      <option value="remote">Remote Only</option>
-                      <option value="hybrid">Hybrid</option>
-                      <option value="onsite">On-site</option>
+                      <option value="all">All Locations (India & Remote)</option>
+                      <option value="bengaluru">Bengaluru</option>
+                      <option value="hyderabad">Hyderabad</option>
+                      <option value="pune">Pune</option>
+                      <option value="mumbai">Mumbai</option>
+                      <option value="delhi">Delhi NCR / Gurgaon / Noida</option>
+                      <option value="chennai">Chennai</option>
+                      <option value="remote">Remote India</option>
                     </select>
 
                     <select
@@ -631,9 +642,10 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                       className="bg-[#11131c] border border-[#434656]/40 rounded-xl px-3 py-2 text-xs text-[#e1e1ef] focus:outline-none focus:border-[#0052ff] cursor-pointer font-mono"
                     >
                       <option value="all">All Experience Levels</option>
-                      <option value="5+">5+ Years</option>
-                      <option value="6+">6+ Years</option>
-                      <option value="7+">7+ Years</option>
+                      <option value="1-3">1-3 Years (Junior / Mid)</option>
+                      <option value="2-5">2-5 Years (Mid Level)</option>
+                      <option value="3-6">3-6 Years (Senior)</option>
+                      <option value="5+">5+ Years (Lead / Architect)</option>
                     </select>
 
                     <select
@@ -664,7 +676,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                   <div className="flex items-center gap-3">
                     <Sparkles className="w-5 h-5 text-[#d0bcff] shrink-0" />
                     <p className="text-xs text-[#e1e1ef] font-mono leading-relaxed">
-                      <strong className="text-[#d0bcff]">AI Insight:</strong> Adding <span className="text-[#4cd7f6] font-bold">Docker</span> and <span className="text-[#4cd7f6] font-bold">Terraform</span> to your profile could increase your average candidate match score by ~8% across 42 additional opportunities.
+                      <strong className="text-[#d0bcff]">AI Matching Engine:</strong> Recommendations are calculated dynamically for <span className="text-[#4cd7f6] font-bold">{activeResumeName}</span> against live Indian tech jobs in PostgreSQL.
                     </p>
                   </div>
                   <button 
@@ -679,21 +691,41 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                 {filteredRecommendedJobs.length === 0 ? (
                   <div className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-12 text-center space-y-4">
                     <AlertCircle className="w-12 h-12 text-[#4cd7f6] mx-auto" />
-                    <h3 className="text-lg font-bold font-geist text-white">No jobs match your current filter selection</h3>
-                    <p className="text-xs font-mono text-[#a1a3b8] max-w-md mx-auto">
-                      Try clearing search filters or adjusting your remote preference. AI recommendations automatically update as search criteria change!
+                    <h3 className="text-lg font-bold font-geist text-white">
+                      {allJobs.length === 0 ? `No matching jobs found for "${activeResumeName}"` : 'No jobs match your current filter selection'}
+                    </h3>
+                    <p className="text-xs font-mono text-[#a1a3b8] max-w-md mx-auto leading-relaxed">
+                      {allJobs.length === 0 
+                        ? 'Our AI matched this resume against available positions across India, but found 0 matching roles for your exact skill profile. Try updating your skills or uploading a tailored resume.'
+                        : 'Try clearing search filters or adjusting your location preference to discover more opportunities.'
+                      }
                     </p>
-                    <button
-                      onClick={() => {
-                        setSearchQuery('');
-                        setRemoteFilter('all');
-                        setExperienceFilter('all');
-                        setJobTypeFilter('all');
-                      }}
-                      className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer"
-                    >
-                      Reset All Filters
-                    </button>
+                    {allJobs.length > 0 ? (
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setRemoteFilter('all');
+                          setExperienceFilter('all');
+                          setJobTypeFilter('all');
+                        }}
+                        className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer"
+                      >
+                        Reset All Filters
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (onNavigateTab) {
+                            onNavigateTab('resume-suite');
+                          } else {
+                            setIsUploadModalOpen(true);
+                          }
+                        }}
+                        className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-2"
+                      >
+                        <Upload className="w-4 h-4" /> Upload Tailored Resume
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

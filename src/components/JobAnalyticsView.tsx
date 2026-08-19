@@ -30,7 +30,7 @@ export const JobAnalyticsView: React.FC<JobAnalyticsViewProps> = ({
     { month: 'Apr', count: 7 },
     { month: 'May', count: 12 },
     { month: 'Jun', count: 9 },
-    { month: 'Jul', count: totalApplied || 6 }
+    { month: 'Jul', count: totalApplied }
   ];
   const maxMonthly = Math.max(...monthlyData.map(m => m.count), 1);
 

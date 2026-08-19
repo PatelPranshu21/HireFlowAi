@@ -4,11 +4,22 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 
 import dotenv from "dotenv";
-import { initDb, dbSaveAtsReport, dbSaveInterviewSession, dbUpdateResumeVersionScore } from "./src/db/postgres";
-import authRoutes from "./server/authRoutes";
-import { extractTextFromPayload } from "./server/documentParser";
+import { 
+  initDb, 
+  getPool,
+  dbSaveAtsReport, 
+  dbSaveInterviewSession, 
+  dbUpdateResumeVersionScore,
+  dbSaveJobMatches,
+  dbGetJobMatchesForResumeVersion
+} from "./src/db/postgres";
+import authRoutes, { verifyAuthHeader } from "./server/authRoutes";
+import { extractTextFromPayload, parseResumeDocument } from "./server/documentParser";
+import { analyzeResumeContentLocally } from "./server/resumeAnalyzer";
 import { pool } from "./db";
 import { PLANS, PlanName, normalizeProfileSubscription } from "./src/data/planConfig";
+import { JobMatchingService, CANONICAL_SKILLS } from "./src/services/jobMatchingService";
+import { JobIngestionService } from "./server/jobIngestionService";
 import { 
   resolveUserProfile, 
   enforceFeatureEntitlement, 
@@ -39,9 +50,17 @@ async function callGroq(
     throw new Error("AI service is not configured. Please configure GROQ_API_KEY.");
   }
 
-  const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+  const primaryModel = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+  const candidateModels = [
+    primaryModel,
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.6-27b',
+    'llama-3.3-70b-versatile',
+    'llama3-8b-8192'
+  ].filter((v, i, a) => a.indexOf(v) === i);
   
-  const messages = [];
+  const messages: any[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
   }
@@ -61,34 +80,48 @@ async function callGroq(
     messages.push({ role: 'user', content: userMessage });
   }
 
-  const body: any = {
-    model: model,
-    messages: messages,
-    temperature: 0.7,
-    max_completion_tokens: 1500
-  };
+  let lastError: any = null;
 
-  if (expectJson) {
-    body.response_format = { type: 'json_object' };
+  for (const model of candidateModels) {
+    try {
+      const body: any = {
+        model: model,
+        messages: messages,
+        temperature: 0.7,
+        max_completion_tokens: 1500
+      };
+
+      if (expectJson) {
+        body.response_format = { type: 'json_object' };
+      }
+
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`[Groq AI] Model '${model}' failed with HTTP ${res.status}:`, text);
+        lastError = new Error(`Groq API error: ${res.status} (${text})`);
+        continue;
+      }
+
+      const data = await res.json();
+      if (data.choices && data.choices[0]?.message?.content) {
+        return data.choices[0].message.content;
+      }
+    } catch (err) {
+      console.warn(`[Groq AI] Error trying model '${model}':`, err);
+      lastError = err;
+    }
   }
 
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("Groq API error:", text);
-    throw new Error(`Groq API error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.choices[0].message.content;
+  throw lastError || new Error("Failed to get response from Groq AI service.");
 }
 
 // ------------------- SUBSCRIPTION & USAGE ENDPOINTS -------------------
@@ -164,173 +197,6 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Helper function to analyze resume text dynamically when offline/local
-function analyzeResumeContentLocally(resumeText: string, targetRole: string = "Software Engineer") {
-  const textLower = (resumeText || '').toLowerCase();
-
-  const techKeywords = [
-    { name: "React", category: "Frameworks" },
-    { name: "TypeScript", category: "Languages" },
-    { name: "JavaScript", category: "Languages" },
-    { name: "Node.js", category: "Frameworks" },
-    { name: "Python", category: "Languages" },
-    { name: "Java", category: "Languages" },
-    { name: "C++", category: "Languages" },
-    { name: "Go", category: "Languages" },
-    { name: "SQL", category: "Databases" },
-    { name: "PostgreSQL", category: "Databases" },
-    { name: "MongoDB", category: "Databases" },
-    { name: "Redis", category: "Databases" },
-    { name: "Docker", category: "DevOps" },
-    { name: "Kubernetes", category: "DevOps" },
-    { name: "AWS", category: "Cloud & Infrastructure" },
-    { name: "GCP", category: "Cloud & Infrastructure" },
-    { name: "Azure", category: "Cloud & Infrastructure" },
-    { name: "GraphQL", category: "API Design" },
-    { name: "REST APIs", category: "API Design" },
-    { name: "Microservices", category: "Architecture" },
-    { name: "Distributed Systems", category: "Architecture" },
-    { name: "CI/CD", category: "DevOps" },
-    { name: "Kafka", category: "Architecture" },
-    { name: "Tailwind CSS", category: "Frameworks" },
-    { name: "Next.js", category: "Frameworks" },
-    { name: "Spring Boot", category: "Frameworks" },
-    { name: "TensorFlow", category: "Machine Learning" },
-    { name: "PyTorch", category: "Machine Learning" },
-    { name: "Git", category: "Methodology" },
-    { name: "Agile/Scrum", category: "Methodology" },
-  ];
-
-  const detectedKeywords: any[] = [];
-  const missingKeywords: any[] = [];
-
-  techKeywords.forEach(item => {
-    const regex = new RegExp(`\\b${item.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'gi');
-    const matches = (resumeText.match(regex) || []).length;
-    if (matches > 0) {
-      detectedKeywords.push({
-        keyword: item.name,
-        detected: true,
-        importance: matches > 2 ? "High" : "Medium",
-        category: item.category,
-        frequency: matches
-      });
-    } else {
-      missingKeywords.push({
-        keyword: item.name,
-        detected: false,
-        importance: ["Kubernetes", "AWS", "Distributed Systems", "CI/CD", "Docker"].includes(item.name) ? "High" : "Medium",
-        category: item.category
-      });
-    }
-  });
-
-  const keywordList = [...detectedKeywords, ...missingKeywords.slice(0, 8)];
-  const numberMatches = (resumeText.match(/(\d+%\s*|\$\s*\d+|\b\d+\s*ms\b|\b\d+\s*k\b|\b\d+\s*m\b|\b\d+\s*users?\b|\b\d+\s*x\b)/gi) || []).length;
-  const actionVerbs = ["engineered", "architected", "spearheaded", "optimized", "developed", "built", "implemented", "scaled", "led", "designed", "reduced", "increased"];
-  const detectedVerbs = actionVerbs.filter(v => textLower.includes(v));
-
-  const hasSummary = textLower.includes("summary") || textLower.includes("profile") || textLower.includes("objective");
-  const hasExperience = textLower.includes("experience") || textLower.includes("employment") || textLower.includes("work history");
-  const hasEducation = textLower.includes("education") || textLower.includes("degree") || textLower.includes("university") || textLower.includes("college");
-  const hasSkills = textLower.includes("skills") || textLower.includes("technologies") || textLower.includes("competencies");
-  const hasProjects = textLower.includes("projects") || textLower.includes("portfolio");
-
-  const sectionCount = [hasSummary, hasExperience, hasEducation, hasSkills, hasProjects].filter(Boolean).length;
-
-  let baseScore = 52;
-  baseScore += Math.min(22, detectedKeywords.length * 2.2);
-  baseScore += Math.min(12, numberMatches * 2.5);
-  baseScore += Math.min(8, detectedVerbs.length * 1.5);
-  baseScore += sectionCount * 2.5;
-
-  const overallScore = Math.min(98, Math.max(45, Math.round(baseScore)));
-  const formattingScore = Math.min(96, Math.max(60, Math.round(70 + (sectionCount * 5))));
-  const impactScore = Math.min(95, Math.max(50, Math.round(55 + (numberMatches * 4) + (detectedVerbs.length * 3))));
-  const relevanceScore = Math.min(99, Math.max(50, Math.round(60 + (detectedKeywords.length * 2.5))));
-
-  const topSkillsFound = detectedKeywords.map(k => k.keyword).slice(0, 6).join(", ") || "Technical Skills";
-
-  return {
-    overallScore,
-    formattingScore,
-    impactScore,
-    relevanceScore,
-    summary: `Analyzed resume highlighting experience with ${topSkillsFound}. Detected ${detectedKeywords.length} technical keywords, ${numberMatches} quantifiable metrics, and ${detectedVerbs.length} key action verbs across ${sectionCount}/5 core resume sections. Target role alignment for "${targetRole}": ${relevanceScore}%.`,
-    targetRole,
-    keywordList,
-    categoryScores: [
-      { category: 'Formatting', score: formattingScore, explanation: `Clear structural separation with ${sectionCount} of 5 standard resume sections identified.`, tip: 'Maintain consistent line spacing and section headers.' },
-      { category: 'Keywords', score: Math.round((detectedKeywords.length / (detectedKeywords.length + 5)) * 100), explanation: `Detected ${detectedKeywords.length} core technical keywords for ${targetRole}.`, tip: `Consider adding ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')} if applicable.` },
-      { category: 'Skills', score: Math.min(95, 60 + detectedKeywords.length * 3), explanation: `Technical coverage including ${topSkillsFound}.`, tip: 'Group skills into clear subheadings (Languages, Frameworks, Cloud).' },
-      { category: 'Projects', score: Math.min(95, 70 + sectionCount * 4), explanation: 'Project titles and tech stacks included.', tip: 'Add live URLs or GitHub repository links.' },
-      { category: 'Experience', score: Math.min(90, 60 + (numberMatches * 5)), explanation: 'Strong tech companies with concise achievements.', tip: 'Add dollar values or percentage growth figures.' },
-      { category: 'Education', score: hasEducation ? 95 : 60, explanation: hasEducation ? 'Education degree and graduation year clearly stated.' : 'Missing explicit education section.', tip: 'Ensure graduation year is included.' },
-      { category: 'Readability', score: Math.min(92, 70 + (sectionCount * 4)), explanation: 'Bullet points are 1-2 lines long; good white space balance.', tip: 'Maintain bullet length under 25 words.' },
-      { category: 'Grammar', score: 95, explanation: 'No obvious spelling errors; minor tense consistency suggestion.', tip: 'Use past tense for former roles.' },
-      { category: 'Structure', score: Math.min(91, 65 + (sectionCount * 5)), explanation: 'Logical flow of sections.', tip: 'Maintain consistent section order.' },
-      { category: 'Impact', score: impactScore, explanation: `Found ${numberMatches} quantified metric points and ${detectedVerbs.length} action verbs.`, tip: 'Try adding specific % latency, cost savings, or active user count figures to all experience bullets.' }
-    ],
-    keywords: (() => {
-      // Extract actual bullet points from resume for resume-specific suggestions
-      const bulletLines = resumeText.split(/\n/).filter(line => {
-        const trimmed = line.trim();
-        return trimmed.length > 20 && (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*') || /^[A-Z][a-z]/.test(trimmed));
-      });
-      
-      const weakBullets = bulletLines.filter(b => {
-        const lower = b.toLowerCase();
-        return !/([\d]+%|[\d]+x|\$[\d]+|[\d]+\s*(ms|k|m|users?|requests?))/i.test(b) && 
-               !actionVerbs.some(v => lower.startsWith(v));
-      }).slice(0, 2);
-
-      const detectedKeywordSuggestions = detectedKeywords.slice(0, 2).map((dk, idx) => ({
-        id: `kw_det_${idx}`,
-        type: 'success' as const,
-        title: `Strong Keyword: '${dk.keyword}' (${dk.frequency}x)`,
-        impactTag: 'Verified',
-        description: `'${dk.keyword}' appears ${dk.frequency} time(s) in your resume — well-aligned with ${targetRole} requirements.`,
-        suggestionTitle: 'Verified',
-        suggestionText: `Found ${dk.frequency} occurrences across your experience and skills sections.`,
-        originalBullet: '',
-        suggestedBullet: ''
-      }));
-      
-      const missingSuggestions = missingKeywords.slice(0, 3).map((m, idx) => ({
-        id: `kw_miss_${idx}`,
-        type: (m.importance === "High" ? "high" : "medium") as "high" | "medium",
-        title: `Missing Keyword: '${m.keyword}' (${m.category})`,
-        impactTag: `${m.importance} Impact`,
-        description: `${targetRole} job postings frequently require ${m.keyword} (${m.category}). Your resume does not mention this skill.`,
-        suggestionTitle: 'AI Suggestion',
-        suggestionText: `Add '${m.keyword}' to your ${m.category === 'Languages' || m.category === 'Frameworks' ? 'Technical Skills' : m.category === 'DevOps' ? 'DevOps/Infrastructure' : 'Projects'} section, or integrate it into a relevant experience bullet.`,
-        originalBullet: weakBullets[idx] ? weakBullets[idx].trim().replace(/^[•\-*]\s*/, '') : `Developed software solutions using various technologies.`,
-        suggestedBullet: weakBullets[idx] 
-          ? `${detectedVerbs[idx % detectedVerbs.length] || 'Engineered'} ${weakBullets[idx].trim().replace(/^[•\-*]\s*/, '').substring(0, 60)}... incorporating ${m.keyword}.`
-          : `Engineered scalable ${m.category.toLowerCase()} solutions leveraging ${m.keyword} for ${targetRole} workflows.`
-      }));
-      
-      return [...missingSuggestions, ...detectedKeywordSuggestions];
-    })(),
-    impactPoints: [
-      `Found ${numberMatches} quantified metrics across your resume. ${numberMatches < 3 ? 'Add at least 1 numerical metric (%, $, or scale) per role bullet.' : 'Good metric density — consider diversifying metric types (latency, cost savings, user growth).'}`,
-      `${detectedVerbs.length > 0 ? `Strong action verbs detected: ${detectedVerbs.join(', ')}. ` : ''}${detectedVerbs.length < 5 ? `Add more action verbs like '${['Engineered', 'Architected', 'Spearheaded', 'Optimized', 'Scaled'].filter(v => !detectedVerbs.includes(v.toLowerCase())).slice(0, 3).join("', '")}'.` : 'Excellent variety of action verbs.'}`,
-      `${missingKeywords.length > 0 ? `Include ${targetRole}-critical keywords: ${missingKeywords.slice(0, 3).map(k => k.keyword).join(', ')} to maximize ATS match rate.` : 'All target keywords detected — strong ATS alignment.'}`,
-      `${!hasProjects ? 'Add a dedicated Projects section with GitHub links and tech stack tags to boost your score by ~5%.' : 'Projects section detected — ensure each project lists the tech stack and a measurable outcome.'}`
-    ],
-    grammarIssues: [
-      hasExperience ? "Ensure uniform past tense verbs for previous roles and present tense for your current role." : "Add a structured Work Experience section with clear date ranges.",
-      `${!hasSummary ? 'Add a Professional Summary/Objective section at the top of your resume.' : 'Professional summary detected — keep it under 3 lines for readability.'}`
-    ],
-    sectionAnalyses: [
-      { id: "sa_1", sectionName: "Professional Summary", score: hasSummary ? 88 : 55, strengths: [hasSummary ? `Professional summary present with ${topSkillsFound.split(', ').length} key skills mentioned` : "Contains key technical terms"], weaknesses: [!hasSummary ? "Missing explicit Summary/Objective section — this is critical for ATS parsers" : "Can be more concise with years of experience stated"], suggestions: [`${hasSummary ? 'Tighten to 2-3 lines highlighting years of experience and top specializations.' : 'Add a 2-3 line Professional Summary at the top mentioning your experience level, core skills, and target role.'}`], recommendedChanges: [], priority: "High" as const, estimatedAtsGain: hasSummary ? 2 : 6 },
-      { id: "sa_2", sectionName: "Work Experience", score: impactScore, strengths: [`Includes ${detectedVerbs.length} action verbs (${detectedVerbs.slice(0, 3).join(', ') || 'none detected'})`, `${numberMatches} quantified metrics detected`], weaknesses: [numberMatches < 3 ? `Only ${numberMatches} quantifiable numbers found — add % improvements, $ revenue, or scale figures` : "Ensure bullet lengths are uniform (1-2 lines each)"], suggestions: ["Start every bullet point with a high-impact action verb and include at least one metric."], recommendedChanges: [], priority: "High" as const, estimatedAtsGain: 8 },
-      { id: "sa_3", sectionName: "Technical Skills", score: Math.min(95, 65 + detectedKeywords.length * 3), strengths: [`Identified ${detectedKeywords.length} technical skills: ${topSkillsFound}`], weaknesses: [missingKeywords.length > 0 ? `Missing ${targetRole}-relevant keywords: ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')}` : "Comprehensive skill coverage"], suggestions: [`Group skills into categories: Languages, Frameworks, Databases, Cloud & DevOps. ${missingKeywords.length > 2 ? `Add: ${missingKeywords.slice(0, 3).map(m => m.keyword).join(', ')}.` : ''}`], recommendedChanges: [], priority: "Medium" as const, estimatedAtsGain: 5 },
-      { id: "sa_4", sectionName: "Projects", score: hasProjects ? 85 : 50, strengths: [hasProjects ? "Projects section detected with technical descriptions" : "Technical experience visible in work history"], weaknesses: [!hasProjects ? "No dedicated Projects section — this is valuable for showcasing hands-on work" : "Add GitHub/live links and measurable outcomes to each project"], suggestions: [hasProjects ? "Add live URLs, GitHub links, and tech stack tags to each project." : "Add a Projects section with 2-3 key projects including tech stack and impact metrics."], recommendedChanges: [], priority: hasProjects ? "Medium" as const : "High" as const, estimatedAtsGain: hasProjects ? 3 : 7 },
-      { id: "sa_5", sectionName: "Education", score: hasEducation ? 92 : 60, strengths: [hasEducation ? "Education section detected with degree information" : "Academic background implied"], weaknesses: [!hasEducation ? "No explicit Education section found" : []], suggestions: ["List degree, institution, graduation year, and relevant coursework clearly."], recommendedChanges: [], priority: "Low" as const, estimatedAtsGain: 2 }
-    ]
-  };
-}
 
 
 // 1. Analyze Resume / ATS Scoring (Enforced for 'atsAnalyses')
@@ -341,45 +207,39 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
       return res.status(400).json({ error: "resumeText or fileData is required" });
     }
 
-    const resumeText = await extractTextFromPayload({ fileText: rawResumeText, fileData, fileName });
-
-    let parsed: any = null;
-
-    // Try Groq/LLM analysis first
-    try {
-      const prompt = `Analyze the following resume for a target role of "${targetRole || 'Software Engineer'}".
-      Provide a comprehensive, highly realistic ATS scoring analysis in JSON format with:
-      - overallScore (0-100 number derived from actual content)
-      - formattingScore (0-100 number)
-      - impactScore (0-100 number)
-      - relevanceScore (0-100 number)
-      - summary (detailed paragraph summary specific to this resume)
-      - keywordList: array of objects { keyword, detected (boolean), importance ("High"|"Medium"), category, frequency (number) }
-      - categoryScores: array of objects { category, score (number), explanation, tip } with exactly 10 categories: Formatting, Keywords, Skills, Projects, Experience, Education, Readability, Grammar, Structure, Impact
-      - keywords: array of objects with { id, type ("high" | "medium" | "success"), title, impactTag, description, suggestionTitle, suggestionText, originalBullet, suggestedBullet }
-      - impactPoints: array of actionable bullet improvement tips
-      - grammarIssues: array of grammar or style fixes
-      - sectionAnalyses: array of objects { id, sectionName, score, strengths: string[], weaknesses: string[], suggestions: string[], recommendedChanges: string[], priority: "High"|"Medium"|"Low", estimatedAtsGain: number }
-      
-      Resume content:
-      """
-      ${resumeText}
-      """`;
-
-      const responseText = await callGroq(prompt, "", [], true);
-      parsed = JSON.parse(responseText || "{}");
-    } catch (groqErr) {
-      console.warn("Groq analysis failed, using local deterministic analysis:", groqErr);
+    const docParse = await parseResumeDocument({ fileText: rawResumeText, fileData, fileName });
+    if (!docParse.extractionSuccess || docParse.extractedTextLength === 0) {
+      return res.status(422).json({
+        error: docParse.error || "Text extraction failed. Unable to extract readable text.",
+        overallScore: 0,
+        status: "analysis_unavailable",
+        extractedTextLength: 0,
+        extractionSuccess: false
+      });
     }
 
-    // Fallback: use deterministic local analysis if Groq failed or returned empty
-    if (!parsed || !parsed.overallScore) {
-      console.log('[Resume Analysis] Using deterministic local analysis for resume.');
-      parsed = analyzeResumeContentLocally(resumeText, targetRole || 'Software Engineer');
-    }
+    const resumeText = docParse.text;
+
+    // Run deterministic analysis to guarantee 100% evidence-based keyword provenance and zero hallucinations
+    const parsed = analyzeResumeContentLocally(resumeText, targetRole || 'Software Engineer');
     
-    if (req.userId && req.userId !== 'usr_guest') {
-      await dbSaveAtsReport(req.userId, {
+    // 3. Deterministic Job Matching against all real available jobs from PostgreSQL
+    const detectedSkills = (parsed.keywordList || [])
+      .filter((k: any) => k.detected && k.foundInResume)
+      .map((k: any) => k.keyword);
+
+    const availableJobs = await JobIngestionService.getAvailableJobs();
+    const jobMatches = JobMatchingService.matchResumeAgainstJobs(
+      resumeText,
+      detectedSkills,
+      availableJobs,
+      targetRole || "Software Engineer"
+    );
+
+    const effectiveUserId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
+    console.log(`[RESUME ANALYSIS] resumeVersionId=${resumeVersionId || 'n/a'} userId=${effectiveUserId || 'guest'} score=${parsed.overallScore}`);
+    if (effectiveUserId && effectiveUserId !== 'usr_guest') {
+      await dbSaveAtsReport(effectiveUserId, {
         resume_id: resumeVersionId,
         target_role: targetRole || "Software Engineer",
         overall_score: parsed.overallScore || 0,
@@ -394,47 +254,209 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
       // Persist score and analysis back to resume_versions table
       if (resumeVersionId) {
         await dbUpdateResumeVersionScore(resumeVersionId, parsed.overallScore || 0, parsed);
+
+        // Save deterministic job matches strictly linked to this resume_version_id
+        const dbMatches = jobMatches.map(m => ({
+          resume_version_id: resumeVersionId,
+          job_id: m.id,
+          match_score: m.matchScore,
+          similarity_score: (m as any).similarityScore || 0,
+          skill_match_score: (m as any).skillMatchScore || 0,
+          matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
+          missing_skills: m.missingSkills || [],
+          preferred_skills: [],
+          why_match: m.recommendationReason
+        }));
+        await dbSaveJobMatches(effectiveUserId, resumeVersionId, dbMatches);
       }
     }
     
-    await recordFeatureUsage(req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
-    res.json(parsed);
+    await recordFeatureUsage(effectiveUserId || req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
+    res.json({ ...parsed, jobRecommendations: jobMatches, extractedText: resumeText, text: resumeText });
   } catch (err: any) {
     console.error("Error in /api/ai/analyze-resume:", err);
     res.status(503).json({ error: err.message || "Failed to analyze resume" });
   }
 });
 
-// 2. Job Match Scoring & Missing Skills Analysis
+// 2. Deterministic Job Match Service API
+app.post("/api/jobs/match-resume", async (req: SubscriptionRequest, res) => {
+  try {
+    const userProfile = await resolveUserProfile(req);
+    const userId = req.userId || userProfile.id;
+    const { resumeVersionId, resumeText, skills, targetRole } = req.body;
+
+    const versionId = resumeVersionId || userProfile.activeResumeVersionId || `v_${Date.now()}`;
+    const text = resumeText || userProfile.resumeText || userProfile.primaryResumeText || '';
+    const candSkills = skills || userProfile.skills || [];
+
+    const availableJobs = await JobIngestionService.getAvailableJobs();
+    const matches = JobMatchingService.matchResumeAgainstJobs(
+      text,
+      candSkills,
+      availableJobs,
+      targetRole || userProfile.targetRole || "Software Engineer"
+    );
+
+    if (userId && userId !== 'usr_guest' && versionId) {
+      const dbMatches = matches.map(m => ({
+        resume_version_id: versionId,
+        job_id: m.id,
+        match_score: m.matchScore,
+        similarity_score: (m as any).similarityScore || 0,
+        skill_match_score: (m as any).skillMatchScore || 0,
+        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
+        missing_skills: m.missingSkills || [],
+        preferred_skills: [],
+        why_match: m.recommendationReason
+      }));
+      await dbSaveJobMatches(userId, versionId, dbMatches);
+    }
+
+    res.json({ success: true, recommendations: matches });
+  } catch (err: any) {
+    console.error("Error in /api/jobs/match-resume:", err);
+    res.status(500).json({ error: "Failed to match resume against jobs", details: err.message });
+  }
+});
+
+// 2b. Get Persisted Job Matches for Specific Resume Version
+app.get("/api/jobs/matches/:resumeVersionId", async (req: SubscriptionRequest, res) => {
+  try {
+    const userProfile = await resolveUserProfile(req);
+    const userId = req.userId || userProfile.id;
+    const { resumeVersionId } = req.params;
+
+    if (!userId || userId === 'usr_guest') {
+      const text = userProfile.resumeText || userProfile.primaryResumeText || '';
+      const availableJobs = await JobIngestionService.getAvailableJobs();
+      const matches = JobMatchingService.matchResumeAgainstJobs(text, userProfile.skills || [], availableJobs, userProfile.targetRole);
+      return res.json({ success: true, recommendations: matches });
+    }
+
+    const persistedRows = await dbGetJobMatchesForResumeVersion(userId, resumeVersionId);
+    if (persistedRows && persistedRows.length > 0) {
+      return res.json({ success: true, recommendations: persistedRows });
+    }
+
+    // If not in DB yet for this version, compute now and persist
+    const activeVer = (userProfile.resumeVersions || []).find((v: any) => v.id === resumeVersionId);
+    const text = activeVer?.resumeText || activeVer?.content || userProfile.resumeText || '';
+    const skills = activeVer?.parsedData?.skills || userProfile.skills || [];
+    const availableJobs = await JobIngestionService.getAvailableJobs();
+    const matches = JobMatchingService.matchResumeAgainstJobs(text, skills, availableJobs, userProfile.targetRole);
+
+    if (userId && userId !== 'usr_guest') {
+      const dbMatches = matches.map(m => ({
+        resume_version_id: resumeVersionId,
+        job_id: m.id,
+        match_score: m.matchScore,
+        similarity_score: (m as any).similarityScore || 0,
+        skill_match_score: (m as any).skillMatchScore || 0,
+        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
+        missing_skills: m.missingSkills || [],
+        preferred_skills: [],
+        why_match: m.recommendationReason
+      }));
+      await dbSaveJobMatches(userId, resumeVersionId, dbMatches);
+    }
+
+    return res.json({ success: true, recommendations: matches });
+  } catch (err: any) {
+    console.error("Error in GET /api/jobs/matches/:resumeVersionId:", err);
+    res.status(500).json({ error: "Failed to fetch job matches", details: err.message });
+  }
+});
+
+// 2b-2. Refresh Job Matches for Specific Resume Version
+app.post("/api/jobs/refresh-for-resume/:resumeVersionId", async (req: SubscriptionRequest, res) => {
+  try {
+    const userProfile = await resolveUserProfile(req);
+    const userId = req.userId || userProfile.id;
+    const { resumeVersionId } = req.params;
+
+    const activeVer = (userProfile.resumeVersions || []).find((v: any) => v.id === resumeVersionId);
+    const text = activeVer?.resumeText || activeVer?.content || userProfile.resumeText || '';
+    const skills = activeVer?.parsedData?.skills || userProfile.skills || [];
+    const availableJobs = await JobIngestionService.getAvailableJobs();
+    const matches = JobMatchingService.matchResumeAgainstJobs(text, skills, availableJobs, userProfile.targetRole);
+
+    if (userId && userId !== 'usr_guest') {
+      const dbMatches = matches.map(m => ({
+        resume_version_id: resumeVersionId,
+        job_id: m.id,
+        match_score: m.matchScore,
+        similarity_score: (m as any).similarityScore || 0,
+        skill_match_score: (m as any).skillMatchScore || 0,
+        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
+        missing_skills: m.missingSkills || [],
+        preferred_skills: [],
+        why_match: m.recommendationReason
+      }));
+      await dbSaveJobMatches(userId, resumeVersionId, dbMatches);
+    }
+
+    return res.json({ success: true, recommendations: matches });
+  } catch (err: any) {
+    console.error("Error in POST /api/jobs/refresh-for-resume/:resumeVersionId:", err);
+    res.status(500).json({ error: "Failed to refresh job matches", details: err.message });
+  }
+});
+
+// 2c. Job Match Diagnostics & AI Explanation (Deterministic Backend Score + AI Explanation)
 app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
-    const { resumeText, jobDescription, jobTitle, company } = req.body;
+    const { resumeText, jobDescription, jobTitle, company, requiredSkills } = req.body;
     if (!jobDescription) {
       return res.status(400).json({ error: "jobDescription is required" });
     }
 
-    const prompt = `Compare this resume against the target job description for position "${jobTitle || 'Role'}" at "${company || 'Company'}".
-    Provide an analysis JSON containing:
-    - matchScore (0-100 number)
-    - matchingSkills (array of strings)
-    - missingSkills (array of strings)
-    - keywordDensityScore (0-100 number)
-    - suggestions (array of string improvement recommendations)
+    // Deterministic calculation
+    const deterministicMatch = JobMatchingService.calculateJobMatch(
+      resumeText || '',
+      [],
+      {
+        id: 'target_job',
+        title: jobTitle || 'Position',
+        company: company || 'Company',
+        description: jobDescription,
+        requiredSkills: requiredSkills || []
+      }
+    );
 
-    Resume:
-    """
-    ${resumeText || 'Experienced Senior Software Engineer with React, TypeScript, Node.js, Python, AWS, and Docker.'}
-    """
+    let suggestions: string[] = [];
+    try {
+      const prompt = `A candidate's resume was compared deterministically against the job "${jobTitle || 'Role'}" at "${company || 'Company'}".
+      Calculated facts:
+      - Match Score: ${deterministicMatch.matchScore}%
+      - Matched Skills: ${deterministicMatch.matchedSkills.join(', ') || 'None'}
+      - Missing Skills: ${deterministicMatch.missingSkills.join(', ') || 'None'}
+      - Textual Similarity: ${deterministicMatch.similarityScore}%
 
-    Job Description:
-    """
-    ${jobDescription}
-    """`;
+      Provide JSON with:
+      - suggestions (array of 3-4 specific string suggestions to improve match score based on the missing skills)`;
 
-    const responseText = await callGroq(prompt, "", [], true);
-    const parsed = JSON.parse(responseText || "{}");
+      const responseText = await callGroq(prompt, "", [], true);
+      const parsedAi = JSON.parse(responseText || "{}");
+      if (Array.isArray(parsedAi.suggestions)) {
+        suggestions = parsedAi.suggestions;
+      }
+    } catch (e) {
+      suggestions = deterministicMatch.missingSkills.map(s => `Add practical experience or projects demonstrating ${s}.`);
+    }
+
     await recordFeatureUsage(req.userId, req.userProfile, 'jobMatchAnalyses', req.guestKey);
-    res.json(parsed);
+    res.json({
+      matchScore: deterministicMatch.matchScore,
+      similarityScore: deterministicMatch.similarityScore,
+      skillMatchScore: deterministicMatch.skillMatchScore,
+      matchingSkills: deterministicMatch.matchedSkills,
+      missingSkills: deterministicMatch.missingSkills,
+      confidence: deterministicMatch.confidence,
+      reason: deterministicMatch.whyMatch,
+      keywordDensityScore: deterministicMatch.similarityScore,
+      suggestions: suggestions
+    });
   } catch (err: any) {
     console.error("Error in /api/ai/match-job:", err);
     res.status(503).json({ error: err.message || "Failed to perform job match analysis" });
@@ -449,25 +471,69 @@ app.post("/api/ai/parse-resume", async (req, res) => {
       return res.status(400).json({ error: "resumeText or fileData is required" });
     }
 
-    const resumeText = await extractTextFromPayload({ fileText: rawText, fileData, fileName });
+    const docParse = await parseResumeDocument({ fileText: rawText, fileData, fileName });
+    if (!docParse.extractionSuccess || docParse.extractedTextLength === 0) {
+      return res.status(422).json({
+        error: docParse.error || "Text extraction failed. Unable to extract readable text from document.",
+        fileName: docParse.fileName,
+        fileType: docParse.fileType,
+        extractedTextLength: 0,
+        extractionSuccess: false
+      });
+    }
 
-    const prompt = `Parse the following raw resume text into a structured JSON object containing:
-    - fullName, email, phone, linkedIn, gitHub, portfolio, summary
-    - education (array of { degree, institution, year, gpa })
-    - experience (array of { company, role, period, location, bullets: string[] })
-    - projects (array of { name, description, technologies: string[] })
-    - skills (array of string skill names)
-    - certifications (array of strings)
-    - languages (array of strings)
-    - achievements (array of strings)
+    const resumeText = docParse.text;
 
-    Resume Text:
-    """
-    ${resumeText}
-    """`;
+    let parsed: any = {};
+    try {
+      const prompt = `Parse the following raw resume text into a structured JSON object containing:
+      - fullName, email, phone, linkedIn, gitHub, portfolio, summary
+      - education (array of { degree, institution, year, gpa })
+      - experience (array of { company, role, period, location, bullets: string[] })
+      - projects (array of { name, description, technologies: string[] })
+      - skills (array of string skill names)
+      - certifications (array of strings)
+      - languages (array of strings)
+      - achievements (array of strings)
 
-    const responseText = await callGroq(prompt, "", [], true);
-    res.json(JSON.parse(responseText || "{}"));
+      Resume Text:
+      """
+      ${resumeText}
+      """`;
+
+      const responseText = await callGroq(prompt, "", [], true);
+      parsed = JSON.parse(responseText || "{}");
+    } catch (groqErr) {
+      console.warn("Groq parse fallback to deterministic extraction:", groqErr);
+      const skills = JobMatchingService.extractSkills(resumeText);
+      const emailMatch = resumeText.match(/[\w.-]+@[\w.-]+\.\w+/);
+      const phoneMatch = resumeText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+      const lines = resumeText.split('\n').map(l => l.trim()).filter(Boolean);
+      parsed = {
+        fullName: lines[0] || '',
+        email: emailMatch ? emailMatch[0] : '',
+        phone: phoneMatch ? phoneMatch[0] : '',
+        summary: lines.slice(1, 4).join(' '),
+        skills: skills,
+        experience: [],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: [],
+        achievements: []
+      };
+    }
+
+    res.json({
+      ...parsed,
+      parsed,
+      text: resumeText,
+      extractedText: resumeText,
+      fileName: docParse.fileName,
+      fileType: docParse.fileType,
+      extractedTextLength: docParse.extractedTextLength,
+      extractionSuccess: true
+    });
   } catch (err: any) {
     console.error("Error in /api/ai/parse-resume:", err);
     res.status(500).json({ error: "Failed to parse resume", details: err.message });
@@ -715,6 +781,23 @@ app.post("/api/ai/generate-report", enforceFeatureEntitlement('mockInterviews'),
 async function startServer() {
   // Initialize PostgreSQL database schema if DATABASE_URL is configured
   await initDb();
+  await JobIngestionService.ensureJobsIngested();
+
+  // Purge orphaned job_matches whose job_ids no longer exist in the jobs table
+  // These are stale references to old mock data that cause "Tech Company" in the UI
+  try {
+    const p = getPool();
+    if (p) {
+      const purgeResult = await p.query(
+        `DELETE FROM job_matches WHERE job_id NOT IN (SELECT id FROM jobs)`
+      );
+      if (purgeResult.rowCount && purgeResult.rowCount > 0) {
+        console.log(`[Startup] Purged ${purgeResult.rowCount} orphaned job_matches with stale job_ids.`);
+      }
+    }
+  } catch (err) {
+    console.error('[Startup] Error purging orphaned job_matches:', err);
+  }
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

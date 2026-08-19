@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { extractTextFromPayload, sanitizePgJson } from './documentParser';
+import { extractTextFromPayload, parseResumeDocument, sanitizePgJson } from './documentParser';
+import { analyzeResumeContentLocally } from './resumeAnalyzer';
 import {
   initDb,
   dbFindUserByEmail,
@@ -30,8 +31,12 @@ import {
   dbSaveProductivityData,
   dbGetProductivityData,
   dbGetAllUserData,
-  dbDeleteResumeVersion
+  dbDeleteResumeVersion,
+  dbSaveJobMatches,
+  dbUpdateResumeVersionScore
 } from '../src/db/postgres';
+import { JobMatchingService } from '../src/services/jobMatchingService';
+import { JobIngestionService } from './jobIngestionService';
 
 const router = Router();
 const JWT_SECRET = process.env.SESSION_SECRET || 'hireflow_super_secret_jwt_key_2026';
@@ -862,19 +867,29 @@ router.post('/resume', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { fileName, fileText, fileData, parsedData, score, template } = req.body;
+    const { fileName, fileText, fileData, parsedData, score, template, analysisData } = req.body;
     if (!fileText && !fileName && !fileData) {
       return res.status(400).json({ error: 'fileName and fileText/fileData required' });
     }
 
-    const cleanText = await extractTextFromPayload({ fileText, fileData, fileName });
+    const docParse = await parseResumeDocument({ fileText, fileData, fileName });
+    const cleanText = docParse.text;
     const cleanParsedData = sanitizePgJson(parsedData || {});
+    let cleanAnalysis = analysisData ? sanitizePgJson(analysisData) : null;
+    
+    // Automatically compute deterministic analysis if not provided
+    if ((!cleanAnalysis || !cleanAnalysis.overallScore) && cleanText && cleanText.trim().length > 20) {
+      const targetRole = req.body.targetRole || parsedData?.targetRole || 'Software Engineer';
+      cleanAnalysis = analyzeResumeContentLocally(cleanText, targetRole);
+    }
+
+    const effectiveScore = cleanAnalysis?.overallScore || Number(score) || 0;
 
     const savedResume = await dbSaveResume(userId, {
       file_name: fileName || 'Resume.pdf',
       resume_text: cleanText,
       parsed_data: cleanParsedData,
-      ats_score: score || 0,
+      ats_score: effectiveScore,
       version_name: fileName || 'Master Resume'
     });
 
@@ -884,11 +899,36 @@ router.post('/resume', async (req: Request, res: Response) => {
       version_name: fileName || 'Master Resume',
       resume_text: cleanText,
       parsed_data: cleanParsedData,
-      score: score || 0,
+      score: effectiveScore,
       template: template || 'modern_tech',
       file_name: fileName || 'Resume.pdf',
-      uploaded_at: new Date().toISOString()
+      uploaded_at: new Date().toISOString(),
+      analysis_data: cleanAnalysis
     });
+
+    if (savedVersion?.id && cleanAnalysis) {
+      await dbUpdateResumeVersionScore(savedVersion.id, effectiveScore, cleanAnalysis);
+    }
+
+    // Compute deterministic job matches for this version using real PostgreSQL jobs
+    const versionSkills = cleanParsedData?.skills || cleanAnalysis?.keywordList?.filter((k: any) => k.detected && k.foundInResume).map((k: any) => k.keyword) || [];
+    const availableJobs = await JobIngestionService.getAvailableJobs();
+    const jobMatches = JobMatchingService.matchResumeAgainstJobs(cleanText, versionSkills, availableJobs);
+
+    if (savedVersion?.id) {
+      const dbMatches = jobMatches.map(m => ({
+        resume_version_id: savedVersion.id,
+        job_id: m.id,
+        match_score: m.matchScore,
+        similarity_score: (m as any).similarityScore || 0,
+        skill_match_score: (m as any).skillMatchScore || 0,
+        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
+        missing_skills: m.missingSkills || [],
+        preferred_skills: [],
+        why_match: m.recommendationReason
+      }));
+      await dbSaveJobMatches(userId, savedVersion.id, dbMatches);
+    }
 
     // Also update profile_data in users table
     const userRecord = await dbFindUserById(userId);
@@ -901,18 +941,22 @@ router.post('/resume', async (req: Request, res: Response) => {
         fileName: fileName || 'Resume.pdf',
         uploadedAt: 'Just now',
         fileSize: '184 KB',
-        score: score || 0,
+        score: effectiveScore,
         template: template || 'modern_tech',
         parsedData: cleanParsedData,
-        jobsMatchedCount: 16,
-        content: cleanText
+        jobsMatchedCount: jobMatches.length,
+        content: cleanText,
+        resumeText: cleanText,
+        analysisData: cleanAnalysis
       };
       const updatedVersions = [newVer, ...existingVersions.filter((v: any) => v.id !== newVer.id)];
       const updatedProfile = {
         ...existingProfile,
         resumeText: cleanText,
+        primaryResumeText: cleanText,
+        activeResumeVersionId: newVer.id,
         resumeVersions: updatedVersions,
-        atsScore: score || existingProfile.atsScore || 0
+        atsScore: effectiveScore || existingProfile.atsScore || 0
       };
       await dbUpdateUserProfile(userId, updatedProfile);
     }
@@ -921,7 +965,10 @@ router.post('/resume', async (req: Request, res: Response) => {
       success: true,
       resume: savedResume,
       version: savedVersion,
-      extractedText: cleanText
+      analysisData: cleanAnalysis,
+      score: effectiveScore,
+      extractedText: cleanText,
+      jobRecommendations: jobMatches
     });
   } catch (err: any) {
     console.error('Error in POST /api/auth/resume:', err);
@@ -964,6 +1011,48 @@ router.delete('/resume-version/:id', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error in DELETE /api/auth/resume-version:', err);
     return res.status(500).json({ error: 'Failed to delete resume version', details: err.message });
+  }
+});
+
+// 7c. Update Resume Version Score & Analysis Data (/api/auth/resume-version/:id/score)
+router.patch('/resume-version/:id/score', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const versionId = req.params.id;
+    const { score, analysisData } = req.body;
+    if (!versionId) {
+      return res.status(400).json({ error: 'Version ID required' });
+    }
+
+    const updated = await dbUpdateResumeVersionScore(versionId, Number(score) || 0, analysisData);
+
+    // Also update in profile_data
+    if (isDbConnected()) {
+      const userRecord = await dbFindUserById(userId);
+      if (userRecord) {
+        const existingProfile = userRecord.profile_data || {};
+        const existingVersions = existingProfile.resumeVersions || [];
+        const updatedVersions = existingVersions.map((v: any) => 
+          v.id === versionId ? { ...v, score: Number(score) || 0, analysisData: analysisData || v.analysisData } : v
+        );
+        const isCurrentActive = existingProfile.activeResumeVersionId === versionId;
+        const updatedProfile = {
+          ...existingProfile,
+          resumeVersions: updatedVersions,
+          atsScore: isCurrentActive ? (Number(score) || 0) : existingProfile.atsScore
+        };
+        await dbUpdateUserProfile(userId, updatedProfile);
+      }
+    }
+
+    return res.json({ success: true, updated });
+  } catch (err: any) {
+    console.error('Error in PATCH /api/auth/resume-version/:id/score:', err);
+    return res.status(500).json({ error: 'Failed to update resume version score', details: err.message });
   }
 });
 
