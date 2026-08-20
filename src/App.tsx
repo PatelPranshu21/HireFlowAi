@@ -115,6 +115,20 @@ function MainAppContent() {
       return;
     }
 
+    // Guard 3: Non-admin users attempting to access /admin -> redirect to dashboard
+    if (targetTab === 'admin') {
+      const userRole = authState.profile?.role || profile?.role;
+      if (userRole !== 'admin' && userRole !== 'Super Admin') {
+        setAuthRedirectMessage('Access Denied: Administrator authorization required.');
+        setCurrentTab('dashboard');
+        if (updateHash) {
+          window.location.hash = 'dashboard';
+          window.history.replaceState(null, '', '/dashboard');
+        }
+        return;
+      }
+    }
+
     setAuthRedirectMessage('');
     setCurrentTab(targetTab);
     if (updateHash) {
@@ -124,29 +138,21 @@ function MainAppContent() {
     setIsMobileMenuOpen(false);
   };
 
-  // Route guard for setup & onboarding flow
+  // Route guard for setup & plan selection flow
   useEffect(() => {
     if (!authState.isLoading && authState.isAuthenticated && profile) {
       const hasSelected = Boolean(profile.hasSelectedPlan) || (profile.subscriptionPlan && profile.subscriptionPlan !== 'None');
-      const hasCompleted = Boolean(profile.hasCompletedOnboarding);
 
-      if (hasCompleted) {
-        if (currentTab === 'onboarding') {
-          handleNavigate('dashboard');
-        }
-      } else if (!hasSelected) {
+      if (!hasSelected) {
         // New user has not selected a plan yet -> enforce Plan Selection
         if (['dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 'settings', 'admin', 'support', 'profile', 'billing', 'onboarding'].includes(currentTab)) {
           handleNavigate('pricing');
         }
-      } else {
-        // Selected plan, but not completed onboarding -> enforce Onboarding
-        if (['dashboard', 'resume-suite', 'job-suite', 'interviews', 'career-tools', 'calendar', 'settings', 'admin', 'support', 'profile', 'billing'].includes(currentTab)) {
-          handleNavigate('onboarding');
-        }
+      } else if (currentTab === 'onboarding') {
+        handleNavigate('dashboard');
       }
     }
-  }, [authState.isLoading, authState.isAuthenticated, profile?.hasCompletedOnboarding, profile?.hasSelectedPlan, profile?.subscriptionPlan, currentTab]);
+  }, [authState.isLoading, authState.isAuthenticated, profile?.hasSelectedPlan, profile?.subscriptionPlan, currentTab]);
 
   // Subscription Checkout State
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<{
@@ -263,12 +269,10 @@ function MainAppContent() {
       const completed = activeProfile ? Boolean(activeProfile.hasCompletedOnboarding) : false;
       const hasSelected = activeProfile ? (Boolean(activeProfile.hasSelectedPlan) || (activeProfile.subscriptionPlan && activeProfile.subscriptionPlan !== 'None')) : false;
 
-      if (completed) {
+      if (hasSelected || completed) {
         handleNavigate('dashboard');
-      } else if (!hasSelected) {
-        handleNavigate('pricing');
       } else {
-        handleNavigate('onboarding');
+        handleNavigate('pricing');
       }
     }
   };
@@ -285,7 +289,8 @@ function MainAppContent() {
       subscriptionStatus: 'trialing',
       trialStartDate: now.toISOString(),
       trialExpiryDate: expiry.toISOString(),
-      hasSelectedPlan: true
+      hasSelectedPlan: true,
+      hasCompletedOnboarding: true
     });
 
     addNotification({
@@ -294,11 +299,7 @@ function MainAppContent() {
       type: 'success'
     });
 
-    if (!profile?.hasCompletedOnboarding) {
-      handleNavigate('onboarding');
-    } else {
-      handleNavigate('dashboard');
-    }
+    handleNavigate('dashboard');
   };
 
   const handleSelectPaidPlan = (planName: 'Basic' | 'Pro' | 'Premium', price: number, billingCycle: 'monthly' | 'yearly') => {
@@ -313,6 +314,7 @@ function MainAppContent() {
       subscriptionPlan: planName,
       subscriptionStatus: 'active',
       hasSelectedPlan: true,
+      hasCompletedOnboarding: true,
       nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       transactionHistory: [transaction, ...(profile?.transactionHistory || [])]
     });
@@ -323,11 +325,7 @@ function MainAppContent() {
       type: 'success'
     });
 
-    if (!profile?.hasCompletedOnboarding) {
-      handleNavigate('onboarding');
-    } else {
-      handleNavigate('dashboard');
-    }
+    handleNavigate('dashboard');
   };
 
   // Authentication Loading State Handler
@@ -550,7 +548,14 @@ function MainAppContent() {
           )}
 
           {currentTab === 'admin' && (
-            <AdminView />
+            (profile?.role === 'admin' || profile?.role === 'Super Admin') ? (
+              <AdminView user={profile} />
+            ) : (
+              <div className="p-12 text-center text-white space-y-4">
+                <h2 className="text-2xl font-bold text-rose-500">403 Access Denied</h2>
+                <p className="text-sm font-mono text-white/60">Administrator authorization is required to access the Admin Portal.</p>
+              </div>
+            )
           )}
         </main>
       </div>

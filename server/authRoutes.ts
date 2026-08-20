@@ -21,7 +21,9 @@ import {
   dbSaveAtsReport,
   dbGetAtsReports,
   dbSaveJobApplication,
+  dbUpdateJobApplicationStatus,
   dbGetUserJobApplications,
+  dbGetAnalyticsOverview,
   dbSaveSavedJob,
   dbRemoveSavedJob,
   dbGetUserSavedJobs,
@@ -65,6 +67,7 @@ function createDefaultProfile(id: string, name: string, email: string, avatar?: 
     id,
     name,
     email,
+    role: 'user',
     avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
     title: 'Candidate / Engineer',
     experienceLevel: 'Mid Level',
@@ -186,13 +189,18 @@ function formatAuthUserResponse(record: DbUserRecord) {
   const onboardingCompleted = Boolean(record.onboarding_completed);
   profile.hasCompletedOnboarding = onboardingCompleted;
 
+  const userRole = (record as any).role || (record.profile_data as any)?.role || 'user';
+  profile.role = userRole;
+
   const { profile: normProfile } = normalizeProfileSubscription(profile);
+  normProfile.role = userRole;
 
   return {
     id: record.id,
     email: record.email,
     firstName: derivedFirstName,
     lastName: derivedLastName,
+    role: userRole,
     authProvider: record.auth_provider,
     onboardingCompleted,
     profile: normProfile
@@ -231,6 +239,7 @@ const handleSignup = async (req: Request, res: Response) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const profileData = createDefaultProfile(userId, cleanName, cleanEmail);
+    profileData.role = 'user'; // Explicit backend role enforcement for public signup
 
     let createdUserRecord: DbUserRecord | null = null;
     if (isDbConnected()) {
@@ -241,6 +250,7 @@ const handleSignup = async (req: Request, res: Response) => {
         last_name: lastName,
         password_hash: passwordHash,
         auth_provider: 'email',
+        role: 'user',
         onboarding_completed: false,
         profile_data: profileData
       });
@@ -386,9 +396,12 @@ router.post('/onboarding', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const existingProfile = userRecord.profile_data || {};
     const updatedProfile = {
-      ...(userRecord.profile_data || {}),
+      ...existingProfile,
       ...onboardingUpdates,
+      atsScore: onboardingUpdates.atsScore || existingProfile.atsScore || (userRecord as any).ats_score || 0,
+      hasUploadedResume: Boolean(onboardingUpdates.hasUploadedResume || existingProfile.hasUploadedResume),
       hasCompletedOnboarding: true
     };
 
@@ -444,7 +457,11 @@ router.put('/profile', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const profileUpdates = req.body;
+    const profileUpdates = { ...req.body };
+    delete profileUpdates.role;
+    delete profileUpdates.isAdmin;
+    delete profileUpdates.is_admin;
+
     let userRecord = await dbFindUserById(userId);
     if (!userRecord && fallbackUsers[userId]) {
       userRecord = fallbackUsers[userId] as any;
@@ -454,9 +471,12 @@ router.put('/profile', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const currentRole = (userRecord as any).role || (userRecord.profile_data as any)?.role || 'user';
+
     const rawMerged = {
       ...(userRecord.profile_data || {}),
       ...profileUpdates,
+      role: currentRole,
       subscriptionPlan: profileUpdates.subscriptionPlan || profileUpdates.subscription_plan || (userRecord as any).subscription_plan || (userRecord.profile_data as any)?.subscriptionPlan || '3-Day Free Trial',
       subscriptionStatus: profileUpdates.subscriptionStatus || profileUpdates.subscription_status || (userRecord as any).subscription_status || (userRecord.profile_data as any)?.subscriptionStatus || 'trialing',
       trialStartDate: profileUpdates.trialStartDate || profileUpdates.trial_start_date || (userRecord as any).trial_start_date || (userRecord.profile_data as any)?.trialStartDate,
@@ -963,7 +983,8 @@ router.post('/resume', async (req: Request, res: Response) => {
     const tMatchStart = performance.now();
     const versionSkills = cleanParsedData?.skills || cleanAnalysis?.keywordList?.filter((k: any) => k.detected && k.foundInResume).map((k: any) => k.keyword) || [];
     const availableJobs = await JobIngestionService.getAvailableJobs();
-    const jobMatches = JobMatchingService.matchResumeAgainstJobs(cleanText, versionSkills, availableJobs);
+    const targetRole = req.body.targetRole || 'Software Engineer';
+    const jobMatches = JobMatchingService.matchResumeAgainstJobs(cleanText, versionSkills, availableJobs, targetRole);
     const tMatching = performance.now() - tMatchStart;
 
     const tDbStart2 = performance.now();
@@ -974,6 +995,10 @@ router.post('/resume', async (req: Request, res: Response) => {
         match_score: m.matchScore,
         similarity_score: (m as any).similarityScore || 0,
         skill_match_score: (m as any).skillMatchScore || 0,
+        required_skill_score: (m as any).requiredSkillScore ?? null,
+        role_alignment_score: (m as any).roleAlignmentScore ?? 75,
+        additional_score: (m as any).additionalScore ?? 80,
+        score_breakdown: (m as any).scoreBreakdown || null,
         matched_skills: (m as any).matchedSkills || [],
         missing_skills: (m as any).missingSkills || [],
         preferred_skills: (m as any).preferredSkills || [],
@@ -1183,10 +1208,50 @@ router.post('/job-application', async (req: Request, res: Response) => {
 
     const app = req.body;
     const saved = await dbSaveJobApplication(userId, app);
-    return res.json({ success: true, application: saved });
+    const isDuplicate = Boolean(saved?.isDuplicate);
+    return res.json({ success: true, isDuplicate, application: saved });
   } catch (err: any) {
     console.error('Error in POST /api/auth/job-application:', err);
     return res.status(500).json({ error: 'Failed to save job application', details: err.message });
+  }
+});
+
+// Update Application Status (/api/auth/job-application/:id/status)
+router.patch('/job-application/:id/status', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const { status, stage } = req.body;
+    if (!status) {
+      return res.status(400).json({ error: 'status is required' });
+    }
+
+    const updated = await dbUpdateJobApplicationStatus(userId, id, status, stage);
+    return res.json({ success: true, application: updated });
+  } catch (err: any) {
+    console.error('Error in PATCH /api/auth/job-application/:id/status:', err);
+    return res.status(500).json({ error: 'Failed to update application status', details: err.message });
+  }
+});
+
+// Analytics Overview (/api/auth/analytics/overview)
+router.get('/analytics/overview', async (req: Request, res: Response) => {
+  try {
+    const userId = verifyAuthHeader(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const period = (req.query.period as string) || 'all';
+    const overview = await dbGetAnalyticsOverview(userId, period);
+    return res.json({ success: true, ...overview });
+  } catch (err: any) {
+    console.error('Error in GET /api/auth/analytics/overview:', err);
+    return res.status(500).json({ error: 'Failed to fetch analytics overview', details: err.message });
   }
 });
 

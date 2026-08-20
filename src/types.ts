@@ -108,6 +108,8 @@ export interface AnalyticsScores {
 export interface UsageLimitItem {
   used: number;
   max: number;
+  limit?: number;
+  remaining?: number;
 }
 
 export interface UsageLimits {
@@ -123,6 +125,7 @@ export interface CentralCareerProfile {
   id: string;
   name: string;
   email: string;
+  role?: 'user' | 'admin' | 'Super Admin' | string;
   phone?: string;
   avatar: string;
   title: string;
@@ -354,6 +357,17 @@ export interface TaskItem {
   completed: boolean;
 }
 
+export interface ScoreBreakdown {
+  requiredSkills: number | null;
+  roleAlignment: number;
+  textSimilarity: number;
+  additionalSignals: number;
+  overallMatch: number;
+  requiredSkillsAvailable: boolean;
+}
+
+export type MatchLabel = 'Exceptional Match' | 'Strong Match' | 'Moderate Match' | 'Low Match' | 'Weak Match';
+
 export interface JobRecommendation {
   id: string;
   job_id?: string;
@@ -365,10 +379,22 @@ export interface JobRecommendation {
   matchScore: number;
   match_score?: number;
   matchConfidence?: 'Very High' | 'High' | 'Moderate' | 'Low';
+  matchLabel?: MatchLabel;
+  match_label?: MatchLabel;
   similarityScore?: number;
   similarity_score?: number;
   skillMatchScore?: number;
   skill_match_score?: number;
+  requiredSkillScore?: number | null;
+  required_skill_score?: number | null;
+  roleAlignmentScore?: number;
+  role_alignment_score?: number;
+  additionalScore?: number;
+  additional_score?: number;
+  scoreBreakdown?: ScoreBreakdown;
+  score_breakdown?: ScoreBreakdown;
+  requiredSkillsAvailable?: boolean;
+  required_skills_available?: boolean;
   tags: string[];
   salary?: string;
   salaryRange?: string;
@@ -565,10 +591,14 @@ export interface ApplicationCard {
   id: string;
   jobId?: string;
   jobTitle: string;
+  title?: string;
   company: string;
   companyLogo: string;
+  logo?: string;
   status: 'saved' | 'applied' | 'assessment' | 'interview' | 'hr_round' | 'offer' | 'accepted' | 'rejected';
   locationType: 'Remote' | 'Hybrid' | 'On-site';
+  location?: string;
+  salary?: string;
   priority?: boolean;
   badgeText?: string;
   timeAgo?: string;

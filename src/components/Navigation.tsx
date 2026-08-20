@@ -215,17 +215,19 @@ export const SideNavBar: React.FC<NavigationProps> = ({
           <span>Settings</span>
         </button>
 
-        <button
-          onClick={() => handleNavClick('admin')}
-          className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer mt-1 ${
-            currentTab === 'admin'
-              ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
-              : 'text-white/40 hover:bg-white/5 hover:text-white'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4 text-blue-400" />
-          <span>Admin Portal</span>
-        </button>
+        {(user?.role === 'admin' || user?.role === 'Super Admin') && (
+          <button
+            onClick={() => handleNavClick('admin')}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer mt-1 ${
+              currentTab === 'admin'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold shadow-sm'
+                : 'text-white/40 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
+            <span>Admin Portal</span>
+          </button>
+        )}
       </div>
 
       {/* Footer Navigation */}

@@ -461,7 +461,7 @@ export class UserService {
     }
   }
 
-  public static async saveJobApplicationApi(app: any): Promise<boolean> {
+  public static async saveJobApplicationApi(app: any): Promise<{ success: boolean; isDuplicate?: boolean; application?: any }> {
     try {
       const token = this.getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -472,10 +472,77 @@ export class UserService {
         headers,
         body: JSON.stringify(app)
       });
-      return res.ok;
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, isDuplicate: Boolean(data.isDuplicate), application: data.application };
+      }
+      return { success: false };
     } catch (err) {
       console.error('Error saving job application API:', err);
+      return { success: false };
+    }
+  }
+
+  public static async updateApplicationStatusApi(id: string, status: string, stage?: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/auth/job-application/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status, stage })
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error updating application status API:', err);
       return false;
+    }
+  }
+
+  public static async getAnalyticsOverviewApi(period: string = 'all'): Promise<any | null> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/analytics/overview?period=${encodeURIComponent(period)}`, { headers });
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching analytics overview API:', err);
+      return null;
+    }
+  }
+
+  public static async getSubscriptionUsageApi(): Promise<{
+    plan: string;
+    subscriptionStatus: string;
+    trialExpiryDate?: string;
+    features: Record<string, { used: number; limit: number; remaining: number }>;
+  } | null> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/subscription/usage', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          plan: data.plan,
+          subscriptionStatus: data.subscriptionStatus,
+          trialExpiryDate: data.trialExpiryDate,
+          features: data.features || {}
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching subscription usage API:', err);
+      return null;
     }
   }
 

@@ -1,5 +1,7 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { JobMatchingService } from '../services/jobMatchingService';
+import { PLANS } from '../data/planConfig';
 
 dotenv.config();
 
@@ -120,6 +122,7 @@ export async function initDb(): Promise<boolean> {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(50) DEFAULT 'Free';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date TIMESTAMPTZ;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expiry_date TIMESTAMPTZ;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';
         ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_data JSONB;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
         ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
@@ -367,9 +370,15 @@ export async function initDb(): Promise<boolean> {
 
         -- Add analysis_data column to resume_versions if missing
         ALTER TABLE resume_versions ADD COLUMN IF NOT EXISTS analysis_data JSONB;
+
+        -- Add score breakdown and diagnostic columns to job_matches if missing
+        ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS required_skill_score INT;
+        ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS role_alignment_score INT;
+        ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS additional_score INT;
+        ALTER TABLE job_matches ADD COLUMN IF NOT EXISTS score_breakdown JSONB;
       `);
       isPostgresAvailable = true;
-      console.log('[PostgreSQL] All persistent database tables initialized successfully (including saved_jobs).');
+      console.log('[PostgreSQL] All persistent database tables initialized successfully (including saved_jobs and job_matches diagnostics).');
       return true;
     } finally {
       client.release();
@@ -393,6 +402,7 @@ export interface DbUserRecord {
   password_hash: string | null;
   auth_provider: string;
   provider_id: string | null;
+  role?: string;
   onboarding_completed: boolean;
   onboarding_completed_at: Date | string | null;
   profile_data: any;
@@ -511,6 +521,7 @@ export async function dbCreateUser(data: {
   password_hash?: string | null;
   auth_provider: string;
   provider_id?: string | null;
+  role?: string | null;
   onboarding_completed?: boolean;
   profile_data?: any;
 }): Promise<DbUserRecord | null> {
@@ -522,10 +533,13 @@ export async function dbCreateUser(data: {
     const now = new Date();
     const cleanProfile = sanitizePgJson(data.profile_data || {});
 
+    const userRole = (data as any).role || cleanProfile.role || 'user';
+    cleanProfile.role = userRole;
+
     const res = await p.query(
       `INSERT INTO users (
-        id, email, first_name, last_name, password_hash, auth_provider, provider_id, onboarding_completed, profile_data, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        id, email, first_name, last_name, password_hash, auth_provider, provider_id, role, onboarding_completed, profile_data, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         data.id,
@@ -535,6 +549,7 @@ export async function dbCreateUser(data: {
         data.password_hash || null,
         data.auth_provider || 'email',
         data.provider_id || null,
+        userRole,
         data.onboarding_completed || false,
         JSON.stringify(cleanProfile),
         now,
@@ -1112,6 +1127,18 @@ export interface DbJobMatchRecord {
   similarityScore?: number;
   skill_match_score?: number;
   skillMatchScore?: number;
+  required_skill_score?: number | null;
+  requiredSkillScore?: number | null;
+  role_alignment_score?: number;
+  roleAlignmentScore?: number;
+  additional_score?: number;
+  additionalScore?: number;
+  score_breakdown?: any;
+  scoreBreakdown?: any;
+  required_skills_available?: boolean;
+  requiredSkillsAvailable?: boolean;
+  match_label?: string;
+  matchLabel?: string;
   matched_skills?: string[];
   matchedSkills?: string[];
   missing_skills?: string[];
@@ -1147,20 +1174,33 @@ export async function dbSaveJobMatches(
       const matchScore = Number(m.matchScore ?? m.match_score ?? 0);
       const similarityScore = Number(m.similarityScore ?? m.similarity_score ?? 0);
       const skillMatchScore = Number(m.skillMatchScore ?? m.skill_match_score ?? 0);
+      const requiredSkillScore = (m.requiredSkillScore !== undefined && m.requiredSkillScore !== null)
+        ? Number(m.requiredSkillScore)
+        : ((m.required_skill_score !== undefined && m.required_skill_score !== null) ? Number(m.required_skill_score) : null);
+      const roleAlignmentScore = Number(m.roleAlignmentScore ?? m.role_alignment_score ?? 75);
+      const additionalScore = Number(m.additionalScore ?? m.additional_score ?? 80);
+      const scoreBreakdown = m.scoreBreakdown ?? m.score_breakdown ?? null;
       const matchedSkills = m.matchedSkills ?? m.matched_skills ?? [];
-      const missingSkills = m.missingSkills ?? m.missing_skills ?? [];
+      const missingSkills = (m.missingSkills !== undefined && m.missingSkills !== null)
+        ? m.missingSkills
+        : ((m.missing_skills !== undefined && m.missing_skills !== null) ? m.missing_skills : null);
       const preferredSkills = m.preferredSkills ?? m.preferred_skills ?? [];
       const cleanWhy = sanitizePgString(m.recommendationReason ?? m.whyMatch ?? m.why_match ?? '');
 
       await p.query(
         `INSERT INTO job_matches (
           id, user_id, resume_version_id, job_id, match_score, similarity_score, skill_match_score,
+          required_skill_score, role_alignment_score, additional_score, score_breakdown,
           matched_skills, missing_skills, preferred_skills, why_match, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
         ON CONFLICT (user_id, resume_version_id, job_id) DO UPDATE SET
           match_score = EXCLUDED.match_score,
           similarity_score = EXCLUDED.similarity_score,
           skill_match_score = EXCLUDED.skill_match_score,
+          required_skill_score = EXCLUDED.required_skill_score,
+          role_alignment_score = EXCLUDED.role_alignment_score,
+          additional_score = EXCLUDED.additional_score,
+          score_breakdown = EXCLUDED.score_breakdown,
           matched_skills = EXCLUDED.matched_skills,
           missing_skills = EXCLUDED.missing_skills,
           preferred_skills = EXCLUDED.preferred_skills,
@@ -1174,8 +1214,12 @@ export async function dbSaveJobMatches(
           matchScore,
           similarityScore,
           skillMatchScore,
+          requiredSkillScore,
+          roleAlignmentScore,
+          additionalScore,
+          scoreBreakdown ? JSON.stringify(sanitizePgJson(scoreBreakdown)) : null,
           JSON.stringify(sanitizePgJson(matchedSkills)),
-          JSON.stringify(sanitizePgJson(missingSkills)),
+          missingSkills !== null ? JSON.stringify(sanitizePgJson(missingSkills)) : null,
           JSON.stringify(sanitizePgJson(preferredSkills)),
           cleanWhy
         ]
@@ -1210,6 +1254,10 @@ export async function dbGetJobMatchesForResumeVersion(
         jm.match_score,
         jm.similarity_score,
         jm.skill_match_score,
+        jm.required_skill_score,
+        jm.role_alignment_score,
+        jm.additional_score,
+        jm.score_breakdown,
         jm.matched_skills,
         jm.missing_skills,
         jm.preferred_skills,
@@ -1242,9 +1290,11 @@ export async function dbGetJobMatchesForResumeVersion(
       const matchedSkills = Array.isArray(row.matched_skills)
         ? row.matched_skills
         : (typeof row.matched_skills === 'string' ? JSON.parse(row.matched_skills) : []);
-      const missingSkills = Array.isArray(row.missing_skills)
-        ? row.missing_skills
-        : (typeof row.missing_skills === 'string' ? JSON.parse(row.missing_skills) : []);
+      const missingSkills = row.missing_skills === null ? null : (
+        Array.isArray(row.missing_skills)
+          ? row.missing_skills
+          : (typeof row.missing_skills === 'string' ? JSON.parse(row.missing_skills) : null)
+      );
       const preferredSkills = Array.isArray(row.preferred_skills)
         ? row.preferred_skills
         : (typeof row.preferred_skills === 'string' ? JSON.parse(row.preferred_skills) : []);
@@ -1262,9 +1312,24 @@ export async function dbGetJobMatchesForResumeVersion(
         : (typeof row.requirements === 'string' ? JSON.parse(row.requirements) : []);
 
       let confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = 'Low';
-      if (row.match_score >= 88) confidence = 'Very High';
-      else if (row.match_score >= 75) confidence = 'High';
-      else if (row.match_score >= 50) confidence = 'Moderate';
+      let matchLabel: 'Exceptional Match' | 'Strong Match' | 'Moderate Match' | 'Low Match' | 'Weak Match' = 'Weak Match';
+
+      if (row.match_score >= 85) {
+        confidence = 'Very High';
+        matchLabel = 'Exceptional Match';
+      } else if (row.match_score >= 70) {
+        confidence = 'High';
+        matchLabel = 'Strong Match';
+      } else if (row.match_score >= 55) {
+        confidence = 'Moderate';
+        matchLabel = 'Moderate Match';
+      } else if (row.match_score >= 40) {
+        confidence = 'Low';
+        matchLabel = 'Low Match';
+      } else {
+        confidence = 'Low';
+        matchLabel = 'Weak Match';
+      }
 
       // Skip orphaned matches where the job record no longer exists
       if (!row.company && !row.title) {
@@ -1272,10 +1337,32 @@ export async function dbGetJobMatchesForResumeVersion(
       }
 
       // Compute canonical required skills: union of matched + missing skills (or fallback to jobSkills)
-      const computedRequired = Array.from(new Set([...matchedSkills, ...missingSkills]));
+      const computedRequired = Array.from(new Set([...matchedSkills, ...(missingSkills || [])]));
       const requiredSkills = computedRequired.length > 0
         ? computedRequired
-        : (jobSkills.length > 0 ? jobSkills : (tags.length > 0 ? tags : matchedSkills));
+        : (jobSkills.length > 0 ? jobSkills : (tags.length > 0 ? tags : []));
+
+      const requiredSkillsAvailable = row.required_skill_score !== null || missingSkills !== null;
+
+      let scoreBreakdown = row.score_breakdown;
+      if (typeof scoreBreakdown === 'string') {
+        try {
+          scoreBreakdown = JSON.parse(scoreBreakdown);
+        } catch (e) {
+          scoreBreakdown = null;
+        }
+      }
+
+      if (!scoreBreakdown) {
+        scoreBreakdown = {
+          requiredSkills: row.required_skill_score !== null ? row.required_skill_score : (requiredSkillsAvailable ? row.skill_match_score : null),
+          roleAlignment: row.role_alignment_score ?? 75,
+          textSimilarity: row.similarity_score ?? 0,
+          additionalSignals: row.additional_score ?? 80,
+          overallMatch: row.match_score,
+          requiredSkillsAvailable
+        };
+      }
 
       return {
         id: row.job_id,
@@ -1289,10 +1376,22 @@ export async function dbGetJobMatchesForResumeVersion(
         matchScore: row.match_score,
         match_score: row.match_score,
         matchConfidence: confidence,
+        matchLabel: matchLabel,
+        match_label: matchLabel,
         similarityScore: row.similarity_score,
         similarity_score: row.similarity_score,
         skillMatchScore: row.skill_match_score,
         skill_match_score: row.skill_match_score,
+        requiredSkillScore: row.required_skill_score,
+        required_skill_score: row.required_skill_score,
+        roleAlignmentScore: row.role_alignment_score ?? 75,
+        role_alignment_score: row.role_alignment_score ?? 75,
+        additionalScore: row.additional_score ?? 80,
+        additional_score: row.additional_score ?? 80,
+        scoreBreakdown: scoreBreakdown,
+        score_breakdown: scoreBreakdown,
+        requiredSkillsAvailable: requiredSkillsAvailable,
+        required_skills_available: requiredSkillsAvailable,
         requiredSkills: requiredSkills,
         required_skills: requiredSkills,
         matchedSkills: matchedSkills,
@@ -1322,6 +1421,69 @@ export async function dbGetJobMatchesForResumeVersion(
   } catch (err) {
     console.error('[PostgreSQL] Error in dbGetJobMatchesForResumeVersion:', err);
     return [];
+  }
+}
+
+export async function dbRecalculateAllJobMatches(): Promise<{ processedVersions: number; updatedMatches: number }> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return { processedVersions: 0, updatedMatches: 0 };
+  try {
+    // Delete orphaned matches whose (user_id, resume_version_id) pair no longer exists in resume_versions
+    await p.query(`DELETE FROM job_matches WHERE (user_id, resume_version_id) NOT IN (SELECT user_id, id FROM resume_versions)`);
+
+    const versionsRes = await p.query(
+      `SELECT rv.id, rv.user_id, rv.resume_text, rv.parsed_data, u.target_role
+       FROM resume_versions rv
+       LEFT JOIN users u ON rv.user_id = u.id`
+    );
+
+    const availableJobsRes = await p.query(`SELECT * FROM jobs WHERE is_active = TRUE`);
+    const availableJobs = availableJobsRes.rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      company: r.company,
+      description: r.description,
+      skills: Array.isArray(r.skills) ? r.skills : (typeof r.skills === 'string' ? JSON.parse(r.skills) : []),
+      tags: Array.isArray(r.tags) ? r.tags : (typeof r.tags === 'string' ? JSON.parse(r.tags) : []),
+      responsibilities: Array.isArray(r.responsibilities) ? r.responsibilities : [],
+      requirements: Array.isArray(r.requirements) ? r.requirements : [],
+      employment_type: r.employment_type,
+      experience_required: r.experience_required,
+      location: r.location,
+      salary: r.salary,
+      company_logo: r.company_logo,
+      company_website: r.company_website,
+      url: r.url,
+      source: r.source,
+      industry: r.industry,
+      posted_at: r.posted_at
+    }));
+
+    let updatedMatches = 0;
+
+    for (const ver of versionsRes.rows) {
+      let parsedData: any = {};
+      try {
+        parsedData = typeof ver.parsed_data === 'string' ? JSON.parse(ver.parsed_data) : (ver.parsed_data || {});
+      } catch (e) {
+        parsedData = {};
+      }
+      const skills = parsedData.skills || [];
+      const targetRole = ver.target_role || 'Software Engineer';
+      const resumeText = ver.resume_text || '';
+
+      const matches = JobMatchingService.matchResumeAgainstJobs(resumeText, skills, availableJobs, targetRole);
+      await dbSaveJobMatches(ver.user_id, ver.id, matches);
+      updatedMatches += matches.length;
+    }
+
+    // Clean up any remaining legacy matches where component scores were never populated
+    await p.query(`DELETE FROM job_matches WHERE role_alignment_score IS NULL`);
+
+    return { processedVersions: versionsRes.rows.length, updatedMatches };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbRecalculateAllJobMatches:', err);
+    return { processedVersions: 0, updatedMatches: 0 };
   }
 }
 
@@ -1452,10 +1614,22 @@ export async function dbSaveJobApplication(userId: string, app: {
   applied_date?: string;
   notes?: string;
   match_score?: number;
+  forceUpdate?: boolean;
 }): Promise<any> {
   const p = getPool();
   if (!p || !isPostgresAvailable) return null;
   try {
+    // Duplicate check for existing job_id for user
+    if (app.job_id && !app.id && !app.forceUpdate) {
+      const existing = await p.query(
+        `SELECT * FROM user_job_applications WHERE user_id = $1 AND job_id = $2`,
+        [userId, app.job_id]
+      );
+      if (existing.rows.length > 0) {
+        return { ...existing.rows[0], isDuplicate: true };
+      }
+    }
+
     const id = app.id || `app_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const res = await p.query(
       `INSERT INTO user_job_applications (
@@ -1490,6 +1664,30 @@ export async function dbSaveJobApplication(userId: string, app: {
   }
 }
 
+export async function dbUpdateJobApplicationStatus(
+  userId: string, 
+  applicationId: string, 
+  status: string, 
+  stage?: string
+): Promise<any> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return null;
+  try {
+    const stageVal = stage || status.charAt(0).toUpperCase() + status.slice(1);
+    const res = await p.query(
+      `UPDATE user_job_applications 
+       SET status = $1, stage = $2, updated_at = NOW() 
+       WHERE id = $3 AND user_id = $4 
+       RETURNING *`,
+      [status, stageVal, applicationId, userId]
+    );
+    return res.rows[0] || null;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbUpdateJobApplicationStatus:', err);
+    return null;
+  }
+}
+
 export async function dbGetUserJobApplications(userId: string): Promise<any[]> {
   const p = getPool();
   if (!p || !isPostgresAvailable) return [];
@@ -1499,6 +1697,218 @@ export async function dbGetUserJobApplications(userId: string): Promise<any[]> {
   } catch (err) {
     console.error('[PostgreSQL] Error in dbGetUserJobApplications:', err);
     return [];
+  }
+}
+
+export async function dbGetAnalyticsOverview(userId: string, period: string = 'all'): Promise<{
+  period: string;
+  applications: {
+    total: number;
+    applied: number;
+    screening: number;
+    interview: number;
+    offer: number;
+    accepted: number;
+    rejected: number;
+    interviewRate: number;
+    offerRate: number;
+    rejectionRate: number;
+    acceptanceRate: number;
+    responseRate: number;
+  };
+  applicationVelocity: { date: string; count: number }[];
+  jobMatches: {
+    totalMatches: number;
+    avgMatchScore: number;
+    distribution: { range: string; count: number }[];
+    quality: { strong: number; good: number; moderate: number; weak: number };
+  };
+  skills: {
+    topMissing: { skill: string; count: number }[];
+    topMatched: { skill: string; count: number }[];
+  };
+  savedJobs: {
+    totalSaved: number;
+    savedAndApplied: number;
+    savedToAppliedRate: number;
+  };
+}> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) {
+    return {
+      period,
+      applications: { total: 0, applied: 0, screening: 0, interview: 0, offer: 0, accepted: 0, rejected: 0, interviewRate: 0, offerRate: 0, rejectionRate: 0, acceptanceRate: 0, responseRate: 0 },
+      applicationVelocity: [],
+      jobMatches: { totalMatches: 0, avgMatchScore: 0, distribution: [], quality: { strong: 0, good: 0, moderate: 0, weak: 0 } },
+      skills: { topMissing: [], topMatched: [] },
+      savedJobs: { totalSaved: 0, savedAndApplied: 0, savedToAppliedRate: 0 }
+    };
+  }
+
+  let dateFilter = '';
+  if (period === '7d') dateFilter = "AND created_at >= NOW() - INTERVAL '7 days'";
+  else if (period === '30d') dateFilter = "AND created_at >= NOW() - INTERVAL '30 days'";
+  else if (period === '90d') dateFilter = "AND created_at >= NOW() - INTERVAL '90 days'";
+
+  try {
+    // 1. Applications KPI & Pipeline
+    const appsRes = await p.query(
+      `SELECT status, stage, created_at FROM user_job_applications WHERE user_id = $1 ${dateFilter}`,
+      [userId]
+    );
+
+    const apps = appsRes.rows;
+    const totalApps = apps.length;
+
+    let applied = 0, screening = 0, interview = 0, offer = 0, accepted = 0, rejected = 0;
+
+    apps.forEach(a => {
+      const s = (a.status || a.stage || '').toLowerCase();
+      if (s.includes('interview') || s.includes('hr_round')) interview++;
+      else if (s.includes('offer')) offer++;
+      else if (s.includes('accept')) accepted++;
+      else if (s.includes('reject')) rejected++;
+      else if (s.includes('screen')) screening++;
+      else applied++;
+    });
+
+    const interviewRate = totalApps > 0 ? Math.round(((interview + offer + accepted) / totalApps) * 100) : 0;
+    const offerRate = totalApps > 0 ? Math.round(((offer + accepted) / totalApps) * 100) : 0;
+    const rejectionRate = totalApps > 0 ? Math.round((rejected / totalApps) * 100) : 0;
+    const acceptanceRate = totalApps > 0 ? Math.round((accepted / totalApps) * 100) : 0;
+    const responseRate = totalApps > 0 ? Math.round(((screening + interview + offer + accepted + rejected) / totalApps) * 100) : 0;
+
+    // 2. Application Velocity timeline
+    const velocityRes = await p.query(
+      `SELECT TO_CHAR(created_at, 'YYYY-MM-DD') AS date_point, COUNT(*) AS count
+       FROM user_job_applications
+       WHERE user_id = $1 ${dateFilter}
+       GROUP BY date_point
+       ORDER BY date_point ASC`,
+      [userId]
+    );
+    const applicationVelocity = velocityRes.rows.map(r => ({ date: r.date_point, count: parseInt(r.count, 10) }));
+
+    // 3. Job Matches statistics
+    let matchDateFilter = '';
+    if (period === '7d') matchDateFilter = "AND created_at >= NOW() - INTERVAL '7 days'";
+    else if (period === '30d') matchDateFilter = "AND created_at >= NOW() - INTERVAL '30 days'";
+    else if (period === '90d') matchDateFilter = "AND created_at >= NOW() - INTERVAL '90 days'";
+
+    const matchStatsRes = await p.query(
+      `SELECT 
+         COUNT(*) AS total_matches,
+         COALESCE(AVG(match_score), 0) AS avg_score,
+         COUNT(CASE WHEN match_score >= 90 THEN 1 END) AS score_90_100,
+         COUNT(CASE WHEN match_score >= 80 AND match_score < 90 THEN 1 END) AS score_80_89,
+         COUNT(CASE WHEN match_score >= 70 AND match_score < 80 THEN 1 END) AS score_70_79,
+         COUNT(CASE WHEN match_score >= 60 AND match_score < 70 THEN 1 END) AS score_60_69,
+         COUNT(CASE WHEN match_score < 60 THEN 1 END) AS score_below_60
+       FROM job_matches
+       WHERE user_id = $1 ${matchDateFilter}`,
+      [userId]
+    );
+    const mRow = matchStatsRes.rows[0] || {};
+    const totalMatches = parseInt(mRow.total_matches || '0', 10);
+    const avgMatchScore = Math.round(parseFloat(mRow.avg_score || '0'));
+    const distribution = [
+      { range: '90–100', count: parseInt(mRow.score_90_100 || '0', 10) },
+      { range: '80–89', count: parseInt(mRow.score_80_89 || '0', 10) },
+      { range: '70–79', count: parseInt(mRow.score_70_79 || '0', 10) },
+      { range: '60–69', count: parseInt(mRow.score_60_69 || '0', 10) },
+      { range: 'Below 60', count: parseInt(mRow.score_below_60 || '0', 10) }
+    ];
+    const quality = {
+      strong: parseInt(mRow.score_90_100 || '0', 10),
+      good: parseInt(mRow.score_80_89 || '0', 10),
+      moderate: parseInt(mRow.score_70_79 || '0', 10),
+      weak: parseInt(mRow.score_60_69 || '0', 10) + parseInt(mRow.score_below_60 || '0', 10)
+    };
+
+    // 4. Top Missing Skills
+    const missingSkillsRes = await p.query(
+      `SELECT jsonb_array_elements_text(missing_skills) AS skill, COUNT(*) AS count
+       FROM job_matches
+       WHERE user_id = $1 AND missing_skills IS NOT NULL AND jsonb_array_length(missing_skills) > 0 ${matchDateFilter}
+       GROUP BY jsonb_array_elements_text(missing_skills)
+       ORDER BY count DESC
+       LIMIT 10`,
+      [userId]
+    );
+    const topMissing = missingSkillsRes.rows.map(r => ({ skill: r.skill, count: parseInt(r.count, 10) }));
+
+    // 5. Top Matched Skills
+    const matchedSkillsRes = await p.query(
+      `SELECT jsonb_array_elements_text(matched_skills) AS skill, COUNT(*) AS count
+       FROM job_matches
+       WHERE user_id = $1 AND matched_skills IS NOT NULL AND jsonb_array_length(matched_skills) > 0 ${matchDateFilter}
+       GROUP BY jsonb_array_elements_text(matched_skills)
+       ORDER BY count DESC
+       LIMIT 10`,
+      [userId]
+    );
+    const topMatched = matchedSkillsRes.rows.map(r => ({ skill: r.skill, count: parseInt(r.count, 10) }));
+
+    // 6. Saved Jobs & Saved -> Applied Conversion
+    const savedStatsRes = await p.query(
+      `SELECT COUNT(*) AS total_saved FROM saved_jobs WHERE user_id = $1`,
+      [userId]
+    );
+    const totalSaved = parseInt(savedStatsRes.rows[0]?.total_saved || '0', 10);
+
+    const savedAndAppliedRes = await p.query(
+      `SELECT COUNT(DISTINCT sj.job_id) AS count
+       FROM saved_jobs sj
+       INNER JOIN user_job_applications uja ON sj.user_id = uja.user_id AND sj.job_id = uja.job_id
+       WHERE sj.user_id = $1`,
+      [userId]
+    );
+    const savedAndApplied = parseInt(savedAndAppliedRes.rows[0]?.count || '0', 10);
+    const savedToAppliedRate = totalSaved > 0 ? Math.round((savedAndApplied / totalSaved) * 100) : 0;
+
+    return {
+      period,
+      applications: {
+        total: totalApps,
+        applied,
+        screening,
+        interview,
+        offer,
+        accepted,
+        rejected,
+        interviewRate,
+        offerRate,
+        rejectionRate,
+        acceptanceRate,
+        responseRate
+      },
+      applicationVelocity,
+      jobMatches: {
+        totalMatches,
+        avgMatchScore,
+        distribution,
+        quality
+      },
+      skills: {
+        topMissing,
+        topMatched
+      },
+      savedJobs: {
+        totalSaved,
+        savedAndApplied,
+        savedToAppliedRate
+      }
+    };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbGetAnalyticsOverview:', err);
+    return {
+      period,
+      applications: { total: 0, applied: 0, screening: 0, interview: 0, offer: 0, accepted: 0, rejected: 0, interviewRate: 0, offerRate: 0, rejectionRate: 0, acceptanceRate: 0, responseRate: 0 },
+      applicationVelocity: [],
+      jobMatches: { totalMatches: 0, avgMatchScore: 0, distribution: [], quality: { strong: 0, good: 0, moderate: 0, weak: 0 } },
+      skills: { topMissing: [], topMatched: [] },
+      savedJobs: { totalSaved: 0, savedAndApplied: 0, savedToAppliedRate: 0 }
+    };
   }
 }
 
@@ -1653,6 +2063,251 @@ export async function dbGetUserSavedJobs(userId: string): Promise<string[]> {
   } catch (err) {
     console.error('[PostgreSQL] Error in dbGetUserSavedJobs:', err);
     return [];
+  }
+}
+
+// --- USER USAGE & ENTITLEMENTS SYSTEM ---
+
+const FEATURE_KEY_MAP: Record<string, string> = {
+  mockInterviews: 'aiInterviews',
+  resumeUploads: 'resumeScans',
+  atsAnalyses: 'atsAnalyses',
+  aiInterviews: 'aiInterviews',
+  coverLetterGenerations: 'coverLetterGenerations',
+  jobMatchAnalyses: 'jobMatchAnalyses',
+  resumeScans: 'resumeScans'
+};
+
+export async function dbInitializeUserUsage(userId: string, planName?: string): Promise<boolean> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') return false;
+  try {
+    let activePlan = planName;
+    if (!activePlan) {
+      const userRes = await p.query(`SELECT subscription_plan, tier FROM users WHERE id = $1`, [userId]);
+      if (userRes.rows.length > 0) {
+        activePlan = userRes.rows[0].subscription_plan || userRes.rows[0].tier || '3-Day Free Trial';
+      }
+    }
+    activePlan = activePlan || '3-Day Free Trial';
+    const planDef = (PLANS as any)[activePlan] || PLANS['3-Day Free Trial'] || PLANS['Free'];
+
+    const limitsMap: Record<string, number> = {
+      atsAnalyses: planDef.limits.atsAnalyses,
+      aiInterviews: planDef.limits.mockInterviews,
+      coverLetterGenerations: planDef.limits.coverLetterGenerations,
+      jobMatchAnalyses: planDef.limits.jobMatchAnalyses,
+      resumeScans: planDef.limits.atsAnalyses
+    };
+
+    const resetAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    for (const [featureKey, maxLimit] of Object.entries(limitsMap)) {
+      const usageId = `usg_${userId}_${featureKey}`;
+      await p.query(
+        `INSERT INTO user_usage (id, user_id, feature_key, used_count, max_limit, reset_at, created_at, updated_at)
+         VALUES ($1, $2, $3, 0, $4, $5, NOW(), NOW())
+         ON CONFLICT (user_id, feature_key)
+         DO UPDATE SET max_limit = EXCLUDED.max_limit, updated_at = NOW()`,
+        [usageId, userId, featureKey, maxLimit, resetAt]
+      );
+    }
+    return true;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbInitializeUserUsage:', err);
+    return false;
+  }
+}
+
+export async function dbGetUserUsage(userId: string): Promise<{
+  plan: string;
+  subscriptionStatus: string;
+  trialExpiryDate?: string;
+  features: Record<string, { used: number; limit: number; remaining: number }>;
+} | null> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') return null;
+  try {
+    const userRes = await p.query(
+      `SELECT subscription_plan, subscription_status, trial_expiry_date, tier FROM users WHERE id = $1`,
+      [userId]
+    );
+    if (userRes.rows.length === 0) return null;
+
+    const userRow = userRes.rows[0];
+    const plan = userRow.subscription_plan || userRow.tier || '3-Day Free Trial';
+    const subscriptionStatus = userRow.subscription_status || 'trialing';
+
+    await dbInitializeUserUsage(userId, plan);
+
+    const usageRes = await p.query(
+      `SELECT feature_key, used_count, max_limit FROM user_usage WHERE user_id = $1`,
+      [userId]
+    );
+
+    const features: Record<string, { used: number; limit: number; remaining: number }> = {};
+    for (const row of usageRes.rows) {
+      const used = Number(row.used_count || 0);
+      const limit = Number(row.max_limit !== undefined && row.max_limit !== null ? row.max_limit : 3);
+      const remaining = limit === -1 ? -1 : Math.max(0, limit - used);
+      features[row.feature_key] = { used, limit, remaining };
+    }
+
+    return {
+      plan,
+      subscriptionStatus,
+      trialExpiryDate: userRow.trial_expiry_date,
+      features
+    };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbGetUserUsage:', err);
+    return null;
+  }
+}
+
+export async function dbCheckFeatureEntitlement(userId: string, rawFeatureKey: string): Promise<{
+  allowed: boolean;
+  feature: string;
+  used: number;
+  limit: number;
+  remaining: number;
+  reason?: string;
+}> {
+  const p = getPool();
+  const featureKey = FEATURE_KEY_MAP[rawFeatureKey] || rawFeatureKey;
+
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') {
+    return { allowed: true, feature: featureKey, used: 0, limit: 3, remaining: 3 };
+  }
+
+  try {
+    let res = await p.query(
+      `SELECT used_count, max_limit FROM user_usage WHERE user_id = $1 AND feature_key = $2`,
+      [userId, featureKey]
+    );
+
+    if (res.rows.length === 0) {
+      await dbInitializeUserUsage(userId);
+      res = await p.query(
+        `SELECT used_count, max_limit FROM user_usage WHERE user_id = $1 AND feature_key = $2`,
+        [userId, featureKey]
+      );
+    }
+
+    if (res.rows.length === 0) {
+      return { allowed: true, feature: featureKey, used: 0, limit: 3, remaining: 3 };
+    }
+
+    const row = res.rows[0];
+    const used = Number(row.used_count || 0);
+    const limit = Number(row.max_limit !== undefined && row.max_limit !== null ? row.max_limit : 3);
+
+    if (limit === -1) {
+      return { allowed: true, feature: featureKey, used, limit: -1, remaining: -1 };
+    }
+
+    const allowed = used < limit;
+    const remaining = Math.max(0, limit - used);
+    return {
+      allowed,
+      feature: featureKey,
+      used,
+      limit,
+      remaining,
+      reason: allowed ? undefined : 'usage_limit_reached'
+    };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbCheckFeatureEntitlement:', err);
+    return { allowed: true, feature: featureKey, used: 0, limit: 3, remaining: 3 };
+  }
+}
+
+export async function dbIncrementFeatureUsage(userId: string, rawFeatureKey: string): Promise<{
+  success: boolean;
+  used: number;
+  limit: number;
+  remaining: number;
+}> {
+  const p = getPool();
+  const featureKey = FEATURE_KEY_MAP[rawFeatureKey] || rawFeatureKey;
+
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') {
+    return { success: true, used: 1, limit: 3, remaining: 2 };
+  }
+
+  try {
+    const res = await p.query(
+      `UPDATE user_usage
+       SET used_count = used_count + 1, updated_at = NOW()
+       WHERE user_id = $1 AND feature_key = $2 AND (used_count < max_limit OR max_limit = -1)
+       RETURNING used_count, max_limit`,
+      [userId, featureKey]
+    );
+
+    if (res.rows.length > 0) {
+      const used = Number(res.rows[0].used_count);
+      const limit = Number(res.rows[0].max_limit);
+      const remaining = limit === -1 ? -1 : Math.max(0, limit - used);
+      return { success: true, used, limit, remaining };
+    }
+
+    const current = await dbCheckFeatureEntitlement(userId, featureKey);
+    return { success: false, used: current.used, limit: current.limit, remaining: current.remaining };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbIncrementFeatureUsage:', err);
+    return { success: false, used: 0, limit: 0, remaining: 0 };
+  }
+}
+
+export async function dbDecrementFeatureUsage(userId: string, rawFeatureKey: string): Promise<boolean> {
+  const p = getPool();
+  const featureKey = FEATURE_KEY_MAP[rawFeatureKey] || rawFeatureKey;
+
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') return false;
+  try {
+    await p.query(
+      `UPDATE user_usage
+       SET used_count = GREATEST(0, used_count - 1), updated_at = NOW()
+       WHERE user_id = $1 AND feature_key = $2`,
+      [userId, featureKey]
+    );
+    return true;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbDecrementFeatureUsage:', err);
+    return false;
+  }
+}
+
+export async function dbMigrateLegacyUsageToUserUsage(userId: string): Promise<void> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable || !userId || userId === 'usr_guest') return;
+  try {
+    const res = await p.query(`SELECT profile_data, subscription_plan FROM users WHERE id = $1`, [userId]);
+    if (res.rows.length === 0) return;
+
+    let profileData: any = res.rows[0].profile_data || {};
+    if (typeof profileData === 'string') {
+      try { profileData = JSON.parse(profileData); } catch (e) { profileData = {}; }
+    }
+
+    const legacyLimits = profileData.usageLimits || {};
+    const planName = res.rows[0].subscription_plan || '3-Day Free Trial';
+
+    await dbInitializeUserUsage(userId, planName);
+
+    for (const [key, val] of Object.entries(legacyLimits)) {
+      const featureKey = FEATURE_KEY_MAP[key] || key;
+      const used = Number((val as any)?.used || 0);
+      if (used > 0) {
+        await p.query(
+          `UPDATE user_usage SET used_count = GREATEST(used_count, $1), updated_at = NOW()
+           WHERE user_id = $2 AND feature_key = $3`,
+          [used, userId, featureKey]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbMigrateLegacyUsageToUserUsage:', err);
   }
 }
 

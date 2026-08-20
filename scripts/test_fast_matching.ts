@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { CANONICAL_SKILLS, SkillDefinition } from '../src/services/jobMatchingService';
+import { JobMatchingService, CANONICAL_SKILLS, SkillDefinition } from '../src/services/jobMatchingService';
 
 const ALIAS_LOOKUP = new Map<string, string>();
 for (const skill of CANONICAL_SKILLS) {
@@ -110,221 +110,14 @@ function extractSkills(text: string, explicitSkills: string[] = []): string[] {
   return Array.from(detected);
 }
 
-// Fast Linear TF-IDF Vector and Similarity computation
-function matchResumeFast(resumeText: string, candidateSkills: string[], jobs: any[], targetRole?: string) {
-  if (!jobs || jobs.length === 0 || (!resumeText && (!candidateSkills || candidateSkills.length === 0))) {
-    return [];
-  }
 
-  const candExtracted = extractSkills(resumeText, candidateSkills);
-  const candidateSkillsSet = new Set(candExtracted.map(s => s.toLowerCase()));
-  const resumeTokens = tokenize(resumeText);
-
-  // Pre-tokenize all jobs once and build Document Frequency (DF) map in O(N)
-  const jobTokensList: string[][] = new Array(jobs.length);
-  const df = new Map<string, number>();
-
-  // Count resume tokens in DF
-  const resumeUniqueTokens = new Set(resumeTokens);
-  for (const t of resumeUniqueTokens) {
-    df.set(t, 1);
-  }
-
-  for (let i = 0; i < jobs.length; i++) {
-    const job = jobs[i];
-    const combinedJobText = [
-      job.title,
-      job.description,
-      ...(job.skills || job.requiredSkills || []),
-      ...(job.tags || []),
-      ...(job.requirements || []),
-      ...(job.responsibilities || [])
-    ].join('\n');
-
-    const jTokens = tokenize(combinedJobText);
-    jobTokensList[i] = jTokens;
-
-    const seenInJob = new Set(jTokens);
-    for (const t of seenInJob) {
-      df.set(t, (df.get(t) || 0) + 1);
-    }
-  }
-
-  const totalDocs = jobs.length + 1; // jobs + resume
-
-  // Compute resume TF-IDF vector once
-  const tfResume = new Map<string, number>();
-  for (const t of resumeTokens) {
-    tfResume.set(t, (tfResume.get(t) || 0) + 1);
-  }
-
-  const vecResume = new Map<string, number>();
-  let normResumeSq = 0;
-  for (const [word, count] of tfResume.entries()) {
-    const tfVal = count / resumeTokens.length;
-    const dfVal = df.get(word) || 1;
-    const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
-    const weight = tfVal * idfVal;
-    vecResume.set(word, weight);
-    normResumeSq += weight * weight;
-  }
-  const normResume = Math.sqrt(normResumeSq);
-
-  const scoredJobs = jobs.map((job, idx) => {
-    const jTokens = jobTokensList[idx];
-    
-    // 1. Text Similarity (Cosine TF-IDF)
-    let similarity = 0;
-    if (normResume > 0 && jTokens.length > 0) {
-      const tfJob = new Map<string, number>();
-      for (const t of jTokens) {
-        tfJob.set(t, (tfJob.get(t) || 0) + 1);
-      }
-
-      let dotProduct = 0;
-      let normJobSq = 0;
-
-      for (const [word, count] of tfJob.entries()) {
-        const tfVal = count / jTokens.length;
-        const dfVal = df.get(word) || 1;
-        const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
-        const weight = tfVal * idfVal;
-        normJobSq += weight * weight;
-
-        const weightResume = vecResume.get(word);
-        if (weightResume !== undefined) {
-          dotProduct += weightResume * weight;
-        }
-      }
-
-      const normJob = Math.sqrt(normJobSq);
-      if (normResume > 0 && normJob > 0) {
-        similarity = Math.min(1.0, Math.max(0.0, dotProduct / (normResume * normJob)));
-      }
-    }
-
-    const similarityScore = Math.round(similarity * 100);
-
-    // 2. Skill Extraction & Overlap
-    const jobExtractedSkills = extractSkills(
-      [job.title, job.description, ...(job.skills || job.requiredSkills || []), ...(job.tags || [])].join('\n'),
-      [...(job.skills || job.requiredSkills || []), ...(job.tags || [])]
-    );
-
-    const rawRequired = (job.skills && job.skills.length > 0)
-      ? job.skills
-      : (job.requiredSkills && job.requiredSkills.length > 0
-        ? job.requiredSkills
-        : (job.tags && job.tags.length > 0 ? job.tags : jobExtractedSkills.slice(0, 5)));
-
-    const normalizedRequiredSkills = Array.from(new Set(rawRequired.map((r: string) => normalizeSkillName(r)))) as string[];
-
-    const matchedSkills: string[] = [];
-    const missingSkills: string[] = [];
-
-    normalizedRequiredSkills.forEach(reqSkill => {
-      const reqLower = reqSkill.toLowerCase();
-      if (candidateSkillsSet.has(reqLower) || candExtracted.some(cs => cs.toLowerCase() === reqLower)) {
-        matchedSkills.push(reqSkill);
-      } else {
-        const hasTextMatch = cleanText(resumeText).includes(cleanText(reqSkill));
-        if (hasTextMatch) {
-          matchedSkills.push(reqSkill);
-        } else {
-          missingSkills.push(reqSkill);
-        }
-      }
-    });
-
-    const totalRequired = normalizedRequiredSkills.length || 1;
-    const requiredSkillCoverage = matchedSkills.length / totalRequired;
-
-    const extraJobSkills = jobExtractedSkills.filter(s => !normalizedRequiredSkills.includes(s));
-    let matchedPreferredCount = 0;
-    const preferredSkills: string[] = [];
-
-    extraJobSkills.forEach(ps => {
-      if (candidateSkillsSet.has(ps.toLowerCase())) {
-        matchedPreferredCount++;
-        preferredSkills.push(ps);
-      }
-    });
-
-    const preferredSkillCoverage = extraJobSkills.length > 0
-      ? matchedPreferredCount / extraJobSkills.length
-      : (matchedSkills.length > 0 ? 0.8 : 0.0);
-
-    const skillMatchScore = Math.round((requiredSkillCoverage * 0.75 + preferredSkillCoverage * 0.25) * 100);
-
-    const rawScore = Math.round(
-      (0.45 * (similarity * 100)) +
-      (0.40 * (requiredSkillCoverage * 100)) +
-      (0.15 * (preferredSkillCoverage * 100))
-    );
-
-    let finalScore = Math.min(100, Math.max(0, rawScore));
-
-    if (targetRole && targetRole.trim()) {
-      const targetClean = cleanText(targetRole);
-      const titleClean = cleanText(job.title);
-      if (targetClean && titleClean && (titleClean.includes(targetClean) || targetClean.includes(titleClean))) {
-        finalScore = Math.min(100, finalScore + 8);
-      }
-    }
-
-    let confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = 'Low';
-    if (finalScore >= 85) confidence = 'Very High';
-    else if (finalScore >= 70) confidence = 'High';
-    else if (finalScore >= 45) confidence = 'Moderate';
-
-    let whyMatch = '';
-    if (matchedSkills.length > 0) {
-      const topMatched = matchedSkills.slice(0, 4).join(', ');
-      if (missingSkills.length === 0) {
-        whyMatch = `Exceptional alignment with 100% coverage of core requirements: ${topMatched}.`;
-      } else {
-        whyMatch = `Strong technical alignment on ${topMatched}. Missing: ${missingSkills.slice(0, 2).join(', ')}.`;
-      }
-    } else {
-      whyMatch = `Low keyword and technology overlap with your profile. Missing: ${normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
-    }
-
-    return {
-      id: job.id,
-      companyId: job.company?.toLowerCase().replace(/\s+/g, '_') || 'company',
-      title: job.title,
-      company: job.company,
-      companyLogo: job.company_logo || job.companyLogo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(job.company || 'Company')}`,
-      location: job.location || 'India',
-      matchScore: finalScore,
-      matchConfidence: confidence,
-      tags: job.tags || matchedSkills,
-      salary: job.salary || 'Competitive',
-      salaryRange: job.salary || 'Competitive',
-      description: job.description,
-      responsibilities: job.responsibilities || [],
-      requirements: job.requirements || [],
-      benefits: job.benefits || ['Comprehensive Health Insurance', 'Annual Learning Stipend', 'Flexible Remote / Hybrid'],
-      requiredSkills: normalizedRequiredSkills,
-      matchedSkills: matchedSkills,
-      missingSkills: missingSkills,
-      experienceRequired: job.experience_required || job.experienceRequired || '2+ Years',
-      jobType: job.employment_type || job.jobType || 'Full-Time',
-      companyDescription: job.companyDescription || `${job.company} is hiring software professionals in India.`,
-      postedDate: job.posted_at || job.postedDate || 'Recently',
-      recommendationReason: whyMatch,
-      applyUrl: job.url || job.applyUrl || '',
-      applicationUrl: job.url || job.applyUrl || '',
-      companyWebsite: job.company_website || job.companyWebsite || job.url || '',
-      similarityScore: similarityScore,
-      skillMatchScore: skillMatchScore,
-      source: job.source || 'HireFlow Direct',
-      industry: job.industry || ''
-    };
-  });
-
-  const filtered = scoredJobs.filter(j => (j.matchedSkills && j.matchedSkills.length > 0) || j.matchScore >= 20);
-  return filtered.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+export function fastMatchResumeAgainstJobs(
+  resumeText: string,
+  candidateSkills: string[],
+  jobs: any[],
+  targetRole?: string
+): any[] {
+  return JobMatchingService.matchResumeAgainstJobs(resumeText, candidateSkills, jobs, targetRole);
 }
 
 import { JobIngestionService } from '../server/jobIngestionService';
@@ -359,7 +152,7 @@ async function testFastMatching() {
   const skills = ['TypeScript', 'JavaScript', 'Python', 'React', 'Node.js', 'PostgreSQL', 'Docker', 'AWS'];
 
   const t0 = performance.now();
-  const results = matchResumeFast(sampleResume, skills, jobs, 'Full Stack Engineer');
+  const results = JobMatchingService.matchResumeAgainstJobs(sampleResume, skills, jobs, 'Full Stack Engineer');
   const t1 = performance.now();
 
   console.log(`\nFast matching took: ${(t1 - t0).toFixed(2)}ms for ${jobs.length} jobs!`);

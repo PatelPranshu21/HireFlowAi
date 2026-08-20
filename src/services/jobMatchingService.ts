@@ -1,9 +1,15 @@
-import { JobRecommendation } from '../types';
+import { JobRecommendation, ScoreBreakdown, MatchLabel } from '../types';
 
 export interface SkillDefinition {
   canonical: string;
   category: 'Languages' | 'Frameworks' | 'Databases' | 'Cloud & DevOps' | 'Architecture' | 'Tools & Methods';
   aliases: string[];
+}
+
+export interface RoleDomainDefinition {
+  domain: string;
+  keywords: string[];
+  skills: string[];
 }
 
 // Comprehensive technology and skill canonical dictionary with aliases
@@ -79,6 +85,50 @@ export const CANONICAL_SKILLS: SkillDefinition[] = [
   { canonical: 'Unit Testing', category: 'Tools & Methods', aliases: ['testing', 'unit testing', 'jest', 'vitest', 'pytest', 'junit', 'cypress', 'playwright', 'tdd'] }
 ];
 
+// Technical role domains for alignment scoring
+export const ROLE_DOMAINS: RoleDomainDefinition[] = [
+  {
+    domain: 'frontend',
+    keywords: ['frontend', 'front end', 'front-end', 'ui', 'ux', 'web developer', 'react', 'vue', 'angular', 'next.js', 'client', 'javascript developer', 'typescript developer'],
+    skills: ['React', 'Next.js', 'Vue.js', 'Angular', 'Tailwind CSS', 'Redux', 'HTML/CSS', 'JavaScript', 'TypeScript', 'Accessibility', 'Web Performance']
+  },
+  {
+    domain: 'backend',
+    keywords: ['backend', 'back end', 'back-end', 'api', 'server', 'node', 'nodejs', 'python', 'django', 'fastapi', 'flask', 'java', 'spring', 'spring boot', 'go', 'golang', 'c#', '.net', 'ruby', 'php', 'microservices', 'distributed systems'],
+    skills: ['Node.js', 'Python', 'Django', 'FastAPI', 'Flask', 'Java', 'Spring Boot', 'Go', 'Rust', 'PHP', 'Ruby', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Kafka', 'REST APIs', 'gRPC', 'Distributed Systems']
+  },
+  {
+    domain: 'fullstack',
+    keywords: ['full stack', 'fullstack', 'full-stack', 'software engineer', 'software developer', 'application engineer', 'web engineer', 'full stack developer', 'full stack engineer'],
+    skills: ['React', 'Node.js', 'TypeScript', 'JavaScript', 'Next.js', 'PostgreSQL', 'REST APIs', 'SQL']
+  },
+  {
+    domain: 'devops',
+    keywords: ['devops', 'sre', 'site reliability', 'infrastructure', 'cloud', 'platform engineer', 'kubernetes', 'aws', 'gcp', 'azure', 'ci/cd', 'systems engineer', 'devsecops'],
+    skills: ['Docker', 'Kubernetes', 'AWS', 'GCP', 'Azure', 'Terraform', 'CI/CD', 'Linux']
+  },
+  {
+    domain: 'data_ai',
+    keywords: ['data engineer', 'data scientist', 'machine learning', 'ai engineer', 'ml engineer', 'nlp', 'deep learning', 'big data', 'analytics', 'ai/ml', 'data analytics'],
+    skills: ['Python', 'PyTorch', 'TensorFlow', 'PostgreSQL', 'Cassandra', 'Elasticsearch', 'SQL']
+  },
+  {
+    domain: 'mobile',
+    keywords: ['mobile developer', 'mobile engineer', 'ios', 'android', 'flutter', 'react native', 'swift', 'kotlin'],
+    skills: ['Swift', 'Kotlin', 'React']
+  },
+  {
+    domain: 'qa',
+    keywords: ['qa', 'test', 'sdet', 'quality assurance', 'test engineer', 'automation engineer', 'qa engineer'],
+    skills: ['Unit Testing', 'CI/CD', 'Git']
+  },
+  {
+    domain: 'security',
+    keywords: ['security engineer', 'cyber security', 'infosec', 'appsec', 'penetration tester', 'application security'],
+    skills: ['Web Security', 'Linux']
+  }
+];
+
 // Build alias lookup map: lowercase alias -> canonical name
 const ALIAS_LOOKUP = new Map<string, string>();
 for (const skill of CANONICAL_SKILLS) {
@@ -111,13 +161,19 @@ export interface MatchScoreResult {
   matchScore: number;
   similarityScore: number;
   skillMatchScore: number;
+  requiredSkillScore: number | null;
+  roleAlignmentScore: number;
+  additionalScore: number;
   matchedSkills: string[];
   missingSkills: string[];
   preferredSkills: string[];
   candidateSkills: string[];
   jobRequiredSkills: string[];
   confidence: 'Very High' | 'High' | 'Moderate' | 'Low';
+  matchLabel: MatchLabel;
   whyMatch: string;
+  requiredSkillsAvailable: boolean;
+  scoreBreakdown: ScoreBreakdown;
 }
 
 export class JobMatchingService {
@@ -290,6 +346,175 @@ export class JobMatchingService {
   }
 
   /**
+   * Deterministic Role / Title Alignment (15% weight in overall match):
+   * Compares candidate's target role, profile skills, and resume against job title and domain.
+   *
+   * Examples:
+   * - Full Stack Developer <-> Full Stack Engineer = ~95%
+   * - React Developer <-> Frontend Engineer = ~95%
+   * - Python/Django Developer <-> Backend Engineer = ~95%
+   * - React Developer <-> DevOps Engineer = ~25%
+   */
+  public static calculateRoleAlignment(
+    candidateTargetRole?: string,
+    candidateSkills: string[] = [],
+    resumeText: string = '',
+    jobTitle: string = '',
+    jobDescription: string = ''
+  ): number {
+    const cleanTitle = this.cleanText(jobTitle);
+    const cleanTarget = this.cleanText(candidateTargetRole || '');
+    const cleanResume = this.cleanText(resumeText);
+    const candSkillsLower = new Set(candidateSkills.map(s => s.toLowerCase()));
+
+    // Direct / Substring exact equivalence
+    if (cleanTarget && cleanTitle) {
+      if (cleanTarget === cleanTitle) return 100;
+      if (cleanTarget.includes(cleanTitle) || cleanTitle.includes(cleanTarget)) return 95;
+    }
+
+    const candDomains = new Set<string>();
+    const jobDomains = new Set<string>();
+
+    for (const d of ROLE_DOMAINS) {
+      // Target role matching
+      if (cleanTarget && d.keywords.some(k => cleanTarget.includes(k))) {
+        candDomains.add(d.domain);
+      }
+      // Job title matching
+      if (cleanTitle && d.keywords.some(k => cleanTitle.includes(k))) {
+        jobDomains.add(d.domain);
+      }
+      // Candidate skills matching domain
+      const skillOverlap = d.skills.filter(s => candSkillsLower.has(s.toLowerCase())).length;
+      if (skillOverlap >= 2 || (skillOverlap >= 1 && d.skills.length <= 4)) {
+        candDomains.add(d.domain);
+      }
+    }
+
+    // Infer candidate domain from resume text if not set
+    if (candDomains.size === 0 && cleanResume) {
+      for (const d of ROLE_DOMAINS) {
+        if (d.keywords.some(k => cleanResume.includes(k))) {
+          candDomains.add(d.domain);
+        }
+      }
+    }
+
+    // Infer job domain from description if not detected from title
+    if (jobDomains.size === 0 && jobDescription) {
+      const cleanDesc = this.cleanText(jobDescription);
+      for (const d of ROLE_DOMAINS) {
+        if (d.keywords.some(k => cleanDesc.includes(k))) {
+          jobDomains.add(d.domain);
+        }
+      }
+    }
+
+    let domainScore = 60; // Base neutral score for generic tech positions
+
+    if (candDomains.size > 0 && jobDomains.size > 0) {
+      const common = Array.from(candDomains).filter(d => jobDomains.has(d));
+      if (common.length > 0) {
+        domainScore = 95;
+      } else if (
+        (candDomains.has('frontend') && jobDomains.has('fullstack')) ||
+        (candDomains.has('backend') && jobDomains.has('fullstack')) ||
+        (candDomains.has('fullstack') && (jobDomains.has('frontend') || jobDomains.has('backend')))
+      ) {
+        domainScore = 85;
+      } else if (
+        (candDomains.has('backend') && jobDomains.has('devops')) ||
+        (candDomains.has('devops') && jobDomains.has('backend')) ||
+        (candDomains.has('data_ai') && jobDomains.has('backend')) ||
+        (candDomains.has('backend') && jobDomains.has('data_ai')) ||
+        (candDomains.has('mobile') && jobDomains.has('frontend'))
+      ) {
+        domainScore = 70;
+      } else if (
+        (candDomains.has('frontend') && (jobDomains.has('devops') || jobDomains.has('data_ai') || jobDomains.has('security'))) ||
+        (candDomains.has('devops') && jobDomains.has('frontend'))
+      ) {
+        domainScore = 25; // Cross-domain mismatch
+      } else {
+        domainScore = 40;
+      }
+    } else if (cleanTarget && cleanTitle) {
+      const targetTokens = cleanTarget.split(' ').filter(t => t.length > 2);
+      const titleTokens = cleanTitle.split(' ').filter(t => t.length > 2);
+      const commonTokens = targetTokens.filter(t => titleTokens.includes(t));
+      if (commonTokens.length > 0) {
+        domainScore = Math.min(90, 60 + commonTokens.length * 15);
+      }
+    }
+
+    // Seniority alignment bonus / penalty
+    const seniorKeywords = ['senior', 'lead', 'principal', 'staff', 'architect', 'head', 'director'];
+    const juniorKeywords = ['junior', 'entry', 'intern', 'associate', 'graduate'];
+
+    const isJobSenior = seniorKeywords.some(k => cleanTitle.includes(k));
+    const isJobJunior = juniorKeywords.some(k => cleanTitle.includes(k));
+
+    const isCandSenior = seniorKeywords.some(k => cleanTarget.includes(k) || cleanResume.includes(k));
+    const isCandJunior = juniorKeywords.some(k => cleanTarget.includes(k));
+
+    if (isJobSenior && isCandSenior) {
+      domainScore = Math.min(100, domainScore + 5);
+    } else if (isJobJunior && isCandJunior) {
+      domainScore = Math.min(100, domainScore + 5);
+    } else if (isJobSenior && isCandJunior) {
+      domainScore = Math.max(20, domainScore - 15);
+    }
+
+    return Math.min(100, Math.max(0, domainScore));
+  }
+
+  /**
+   * Additional Signals Score (5% weight):
+   * Incorporates employment type, location/remote compatibility, experience alignment, and bonus skills.
+   */
+  public static calculateAdditionalSignals(
+    job: {
+      experience_required?: string;
+      experienceRequired?: string;
+      employment_type?: string;
+      jobType?: string;
+      location?: string;
+      tags?: string[];
+      description?: string;
+    },
+    candidateSkills: string[] = [],
+    resumeText: string = '',
+    matchedPreferredCount: number = 0,
+    totalPreferredCount: number = 0
+  ): number {
+    let score = 80; // Baseline reliable score
+
+    // Preferred / bonus skills contribution
+    if (totalPreferredCount > 0) {
+      const prefRatio = matchedPreferredCount / totalPreferredCount;
+      score = Math.round(score * 0.5 + prefRatio * 100 * 0.5);
+    }
+
+    // Employment type
+    const empType = (job.employment_type || job.jobType || '').toLowerCase();
+    if (empType.includes('full') || empType.includes('permanent')) {
+      score = Math.min(100, score + 5);
+    }
+
+    // Location / Remote match
+    const loc = (job.location || '').toLowerCase();
+    const cleanResume = this.cleanText(resumeText);
+    if (loc.includes('remote') || loc.includes('hybrid')) {
+      score = Math.min(100, score + 5);
+    } else if (loc && cleanResume && cleanResume.includes(this.cleanText(loc))) {
+      score = Math.min(100, score + 5);
+    }
+
+    return Math.min(100, Math.max(0, score));
+  }
+
+  /**
    * Deterministic matching engine between a Candidate Resume and a Single Job Posting
    */
   public static calculateJobMatch(
@@ -301,11 +526,18 @@ export class JobMatchingService {
       company?: string;
       description?: string;
       requiredSkills?: string[];
+      skills?: string[];
       tags?: string[];
       responsibilities?: string[];
       requirements?: string[];
+      employment_type?: string;
+      jobType?: string;
+      location?: string;
+      experience_required?: string;
+      experienceRequired?: string;
     },
-    corpusDescriptions: string[] = []
+    corpusDescriptions: string[] = [],
+    targetRole?: string
   ): MatchScoreResult {
     // 1. Extract candidate skills
     const candidateSkills = this.extractSkills(resumeText, candidateExplicitSkills);
@@ -315,47 +547,55 @@ export class JobMatchingService {
     const combinedJobText = [
       job.title,
       job.description,
-      ...(job.requiredSkills || []),
+      ...(job.skills || job.requiredSkills || []),
       ...(job.tags || []),
       ...(job.requirements || []),
       ...(job.responsibilities || [])
     ].join('\n');
 
     const jobExtractedSkills = this.extractSkills(combinedJobText, [
-      ...(job.requiredSkills || []),
+      ...(job.skills || job.requiredSkills || []),
       ...(job.tags || [])
     ]);
 
     // Canonicalize job required skills
-    const rawRequired = job.requiredSkills && job.requiredSkills.length > 0 
-      ? job.requiredSkills 
-      : (job.tags && job.tags.length > 0 ? job.tags : jobExtractedSkills.slice(0, 5));
+    const rawRequired = (job.skills && job.skills.length > 0)
+      ? job.skills
+      : (job.requiredSkills && job.requiredSkills.length > 0
+        ? job.requiredSkills
+        : (job.tags && job.tags.length > 0 ? job.tags : []));
 
-    const normalizedRequiredSkills = Array.from(new Set(rawRequired.map(r => this.normalizeSkillName(r))));
+    const normalizedRequiredSkills = Array.from(new Set(rawRequired.map(r => this.normalizeSkillName(r)))) as string[];
+    const totalRequired = normalizedRequiredSkills.length;
+    const requiredSkillsAvailable = totalRequired > 0;
 
     // 3. Compute skill overlap
     const matchedSkills: string[] = [];
-    const missingSkills: string[] = [];
+    const missingSkills: string[] | null = requiredSkillsAvailable ? [] : null;
 
-    normalizedRequiredSkills.forEach(reqSkill => {
-      const reqLower = reqSkill.toLowerCase();
-      if (candidateSkillsSet.has(reqLower) || candidateSkills.some(cs => cs.toLowerCase() === reqLower)) {
-        matchedSkills.push(reqSkill);
-      } else {
-        const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
-        if (hasTextMatch) {
+    if (requiredSkillsAvailable && missingSkills) {
+      normalizedRequiredSkills.forEach(reqSkill => {
+        const reqLower = reqSkill.toLowerCase();
+        if (candidateSkillsSet.has(reqLower) || candidateSkills.some(cs => cs.toLowerCase() === reqLower)) {
           matchedSkills.push(reqSkill);
         } else {
-          missingSkills.push(reqSkill);
+          const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
+          if (hasTextMatch) {
+            matchedSkills.push(reqSkill);
+          } else {
+            missingSkills.push(reqSkill);
+          }
         }
-      }
-    });
+      });
+    }
 
-    // 4. Calculate skill coverage
-    const totalRequired = normalizedRequiredSkills.length || 1;
-    const requiredSkillCoverage = matchedSkills.length / totalRequired;
+    // 4. Calculate component scores
+    // Signal 1: Required Skills Coverage (70% weight)
+    const requiredSkillScore = requiredSkillsAvailable
+      ? (matchedSkills.length / totalRequired) * 100
+      : null;
 
-    // Preferred skills / extra matching tags
+    // Preferred skills
     const extraJobSkills = jobExtractedSkills.filter(s => !normalizedRequiredSkills.includes(s));
     let matchedPreferredCount = 0;
     const preferredSkills: string[] = [];
@@ -371,49 +611,109 @@ export class JobMatchingService {
       ? matchedPreferredCount / extraJobSkills.length
       : (matchedSkills.length > 0 ? 0.8 : 0.0);
 
-    // 5. Calculate TF-IDF textual similarity between resume_text and job_description
-    const similarity = this.calculateTfIdfCosineSimilarity(resumeText, combinedJobText, corpusDescriptions);
-    const similarityScore = Math.round(similarity * 100);
+    const skillMatchScore = requiredSkillsAvailable
+      ? Math.round(requiredSkillScore!)
+      : Math.round(preferredSkillCoverage * 100);
 
-    // 6. Calculate skill match score
-    const skillMatchScore = Math.round((requiredSkillCoverage * 0.75 + preferredSkillCoverage * 0.25) * 100);
-
-    // 7. Deterministic Final Scoring Formula:
-    // 0.45 * text_similarity + 0.40 * required_skill_coverage + 0.15 * preferred_skill_coverage
-    const rawScore = Math.round(
-      (0.45 * (similarity * 100)) +
-      (0.40 * (requiredSkillCoverage * 100)) +
-      (0.15 * (preferredSkillCoverage * 100))
+    // Signal 2: Role / Title Alignment (15% weight)
+    const roleAlignmentScore = this.calculateRoleAlignment(
+      targetRole,
+      candidateSkills,
+      resumeText,
+      job.title,
+      job.description
     );
 
-    // Bound to 0 - 100
-    const matchScore = Math.min(100, Math.max(0, rawScore));
+    // Signal 3: Text Similarity (10% weight)
+    const similarity = this.calculateTfIdfCosineSimilarity(resumeText, combinedJobText, corpusDescriptions);
+    const similarityScore = Math.min(100, Math.max(0, Math.round(similarity * 100)));
 
-    // 8. Confidence determination
-    let confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = 'Low';
-    if (matchScore >= 88) confidence = 'Very High';
-    else if (matchScore >= 75) confidence = 'High';
-    else if (matchScore >= 50) confidence = 'Moderate';
+    // Signal 4: Additional Signals (5% weight)
+    const additionalScore = this.calculateAdditionalSignals(
+      job,
+      candidateSkills,
+      resumeText,
+      matchedPreferredCount,
+      extraJobSkills.length
+    );
 
-    // 9. Score-Aware Transparent Reason Generation
+    // 5. Deterministic Final Scoring Formula
+    let finalScore: number;
+    if (requiredSkillsAvailable && totalRequired > 0) {
+      const rawScore =
+        (requiredSkillScore! * 0.70) +
+        (roleAlignmentScore * 0.15) +
+        (similarityScore * 0.10) +
+        (additionalScore * 0.05);
+      finalScore = Math.min(100, Math.max(0, Math.round(rawScore)));
+    } else {
+      // Fallback for missing/unavailable required skills:
+      // Weight distributed over roleAlignment (50%), textSimilarity (33.3%), additional (16.7%)
+      const rawScore =
+        (roleAlignmentScore * 0.50) +
+        (similarityScore * 0.3333) +
+        (additionalScore * 0.1667);
+      finalScore = Math.min(100, Math.max(0, Math.round(rawScore)));
+    }
+
+    // 6. Match Confidence & Labels (Section 7)
+    let matchLabel: MatchLabel;
+    let confidence: 'Very High' | 'High' | 'Moderate' | 'Low';
+
+    if (finalScore >= 85) {
+      matchLabel = 'Exceptional Match';
+      confidence = 'Very High';
+    } else if (finalScore >= 70) {
+      matchLabel = 'Strong Match';
+      confidence = 'High';
+    } else if (finalScore >= 55) {
+      matchLabel = 'Moderate Match';
+      confidence = 'Moderate';
+    } else if (finalScore >= 40) {
+      matchLabel = 'Low Match';
+      confidence = 'Low';
+    } else {
+      matchLabel = 'Weak Match';
+      confidence = 'Low';
+    }
+
+    // 7. Score Breakdown Object
+    const scoreBreakdown: ScoreBreakdown = {
+      requiredSkills: requiredSkillsAvailable ? Math.round(requiredSkillScore!) : null,
+      roleAlignment: roleAlignmentScore,
+      textSimilarity: similarityScore,
+      additionalSignals: additionalScore,
+      overallMatch: finalScore,
+      requiredSkillsAvailable
+    };
+
+    // 8. Honest Score-Aware Explanation Generation
     const whyMatch = JobMatchingService.generateScoreAwareWhyMatch(
-      matchScore,
+      finalScore,
       matchedSkills,
       missingSkills,
-      normalizedRequiredSkills
+      normalizedRequiredSkills,
+      requiredSkillsAvailable,
+      roleAlignmentScore
     );
 
     return {
-      matchScore,
+      matchScore: finalScore,
       similarityScore,
       skillMatchScore,
+      requiredSkillScore: requiredSkillsAvailable ? Math.round(requiredSkillScore!) : null,
+      roleAlignmentScore,
+      additionalScore,
       matchedSkills,
       missingSkills,
       preferredSkills,
       candidateSkills,
       jobRequiredSkills: normalizedRequiredSkills,
       confidence,
-      whyMatch
+      matchLabel,
+      whyMatch,
+      requiredSkillsAvailable,
+      scoreBreakdown
     };
   }
 
@@ -423,45 +723,54 @@ export class JobMatchingService {
   public static generateScoreAwareWhyMatch(
     matchScore: number,
     matchedSkills: string[],
-    missingSkills: string[],
-    normalizedRequiredSkills: string[]
+    missingSkills: string[] | null,
+    normalizedRequiredSkills: string[],
+    requiredSkillsAvailable: boolean = true,
+    roleAlignmentScore: number = 75
   ): string {
-    const topMatched = matchedSkills.slice(0, 4).join(', ');
-    const topMissing = missingSkills.slice(0, 2).join(', ');
+    const topMatched = (matchedSkills || []).slice(0, 4).join(', ');
+    const safeMissing = missingSkills || [];
+    const topMissing = safeMissing.slice(0, 3).join(', ');
 
-    if (matchScore >= 90) {
+    if (!requiredSkillsAvailable || normalizedRequiredSkills.length === 0) {
+      if (matchScore >= 75) {
+        return `Strong alignment (${matchScore}%). Role and profile align with this position (specific skill requirements not detailed by employer).`;
+      } else if (matchScore >= 55) {
+        return `Moderate alignment (${matchScore}%). Profile aligns with general role focus (detailed skill requirements unavailable).`;
+      }
+      return `Low alignment (${matchScore}%). Profile has limited overlap with this role description.`;
+    }
+
+    if (matchScore >= 85) {
       if (missingSkills.length === 0) {
-        return `Exceptional match (${matchScore}%). 100% required skill coverage (${topMatched}) with strong overall profile alignment.`;
+        return `Exceptional match (${matchScore}%). 100% required skill coverage (${topMatched}) with strong role alignment.`;
       }
       return `Exceptional match (${matchScore}%). High alignment on ${topMatched}. Gaps: ${topMissing}.`;
     }
 
-    if (matchScore >= 75) {
+    if (matchScore >= 70) {
       if (missingSkills.length === 0) {
         return `Strong match (${matchScore}%). 100% required skill coverage (${topMatched}) with solid technical alignment.`;
       }
       return `Strong match (${matchScore}%). Core alignment on ${topMatched}. Missing: ${topMissing}.`;
     }
 
-    if (matchScore >= 60) {
+    if (matchScore >= 55) {
       if (missingSkills.length === 0) {
-        return `Good match (${matchScore}%). All listed core skills matched (${topMatched}), with moderate overall job description overlap.`;
-      }
-      return `Good match (${matchScore}%). Alignment on ${topMatched}. Missing: ${topMissing}.`;
-    }
-
-    if (matchScore >= 40) {
-      if (missingSkills.length === 0) {
-        return `Moderate match (${matchScore}%). You match the required skills (${topMatched}), but broader experience and domain context have moderate overlap.`;
+        return `Moderate match (${matchScore}%). All listed core skills matched (${topMatched}), with moderate overall role alignment.`;
       }
       return `Moderate match (${matchScore}%). Partial skill alignment on ${topMatched}. Missing: ${topMissing}.`;
     }
 
-    // matchScore < 40
-    if (missingSkills.length === 0 && matchedSkills.length > 0) {
-      return `Low match (${matchScore}%). Core skill (${topMatched}) matched, but overall role profile has low similarity.`;
+    if (matchScore >= 40) {
+      if (missingSkills.length === 0 && matchedSkills.length > 0) {
+        return `Low match (${matchScore}%). Core skill (${topMatched}) matched, but overall role profile has low similarity.`;
+      }
+      return `Low match (${matchScore}%). Limited overlap with role requirements. Missing: ${topMissing || normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
     }
-    return `Low match (${matchScore}%). Low keyword overlap with your profile. Missing: ${normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
+
+    // matchScore < 40
+    return `Weak match (${matchScore}%). Significant skill and profile gaps for this position. Missing: ${topMissing || normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
   }
 
   /**
@@ -565,7 +874,7 @@ export class JobMatchingService {
         }
       }
 
-      const similarityScore = Math.round(similarity * 100);
+      const similarityScore = Math.min(100, Math.max(0, Math.round(similarity * 100)));
 
       // Skill Extraction & Overlap
       const jobExtractedSkills = this.extractSkills(
@@ -580,26 +889,32 @@ export class JobMatchingService {
           : (job.tags && job.tags.length > 0 ? job.tags : jobExtractedSkills.slice(0, 5)));
 
       const normalizedRequiredSkills = Array.from(new Set(rawRequired.map((r: string) => this.normalizeSkillName(r)))) as string[];
+      const totalRequired = normalizedRequiredSkills.length;
+      const requiredSkillsAvailable = totalRequired > 0;
 
       const matchedSkills: string[] = [];
       const missingSkills: string[] = [];
 
-      normalizedRequiredSkills.forEach(reqSkill => {
-        const reqLower = reqSkill.toLowerCase();
-        if (candidateSkillsSet.has(reqLower) || candExtracted.some(cs => cs.toLowerCase() === reqLower)) {
-          matchedSkills.push(reqSkill);
-        } else {
-          const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
-          if (hasTextMatch) {
+      if (requiredSkillsAvailable) {
+        normalizedRequiredSkills.forEach(reqSkill => {
+          const reqLower = reqSkill.toLowerCase();
+          if (candidateSkillsSet.has(reqLower) || candExtracted.some(cs => cs.toLowerCase() === reqLower)) {
             matchedSkills.push(reqSkill);
           } else {
-            missingSkills.push(reqSkill);
+            const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
+            if (hasTextMatch) {
+              matchedSkills.push(reqSkill);
+            } else {
+              missingSkills.push(reqSkill);
+            }
           }
-        }
-      });
+        });
+      }
 
-      const totalRequired = normalizedRequiredSkills.length || 1;
-      const requiredSkillCoverage = matchedSkills.length / totalRequired;
+      // Signal 1: Required Skills Coverage (70% weight)
+      const requiredSkillScore = requiredSkillsAvailable
+        ? (matchedSkills.length / totalRequired) * 100
+        : null;
 
       const extraJobSkills = jobExtractedSkills.filter(s => !normalizedRequiredSkills.includes(s));
       let matchedPreferredCount = 0;
@@ -616,35 +931,87 @@ export class JobMatchingService {
         ? matchedPreferredCount / extraJobSkills.length
         : (matchedSkills.length > 0 ? 0.8 : 0.0);
 
-      const skillMatchScore = Math.round((requiredSkillCoverage * 0.75 + preferredSkillCoverage * 0.25) * 100);
+      const skillMatchScore = requiredSkillsAvailable
+        ? Math.round(requiredSkillScore!)
+        : Math.round(preferredSkillCoverage * 100);
 
-      const rawScore = Math.round(
-        (0.45 * (similarity * 100)) +
-        (0.40 * (requiredSkillCoverage * 100)) +
-        (0.15 * (preferredSkillCoverage * 100))
+      // Signal 2: Role / Title Alignment (15% weight)
+      const roleAlignmentScore = this.calculateRoleAlignment(
+        targetRole,
+        candExtracted,
+        resumeText,
+        job.title,
+        job.description
       );
 
-      let finalScore = Math.min(100, Math.max(0, rawScore));
+      // Signal 3: Text Similarity (10% weight) - similarityScore is already computed above
 
-      // Extra role bonus if targetRole matches title
-      if (targetRole && targetRole.trim()) {
-        const targetClean = this.cleanText(targetRole);
-        const titleClean = this.cleanText(job.title);
-        if (targetClean && titleClean && (titleClean.includes(targetClean) || targetClean.includes(titleClean))) {
-          finalScore = Math.min(100, finalScore + 8);
-        }
+      // Signal 4: Additional Signals (5% weight)
+      const additionalScore = this.calculateAdditionalSignals(
+        job,
+        candExtracted,
+        resumeText,
+        matchedPreferredCount,
+        extraJobSkills.length
+      );
+
+      // 5. Final Deterministic Scoring Formula
+      let finalScore: number;
+      if (requiredSkillsAvailable && totalRequired > 0) {
+        const rawScore =
+          (requiredSkillScore! * 0.70) +
+          (roleAlignmentScore * 0.15) +
+          (similarityScore * 0.10) +
+          (additionalScore * 0.05);
+        finalScore = Math.min(100, Math.max(0, Math.round(rawScore)));
+      } else {
+        // Fallback for missing/unavailable required skills:
+        // Weight distributed over roleAlignment (50%), textSimilarity (33.3%), additional (16.7%)
+        const rawScore =
+          (roleAlignmentScore * 0.50) +
+          (similarityScore * 0.3333) +
+          (additionalScore * 0.1667);
+        finalScore = Math.min(100, Math.max(0, Math.round(rawScore)));
       }
 
-      let confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = 'Low';
-      if (finalScore >= 88) confidence = 'Very High';
-      else if (finalScore >= 75) confidence = 'High';
-      else if (finalScore >= 50) confidence = 'Moderate';
+      // 6. Match Confidence & Labels (Section 7)
+      let matchLabel: MatchLabel;
+      let confidence: 'Very High' | 'High' | 'Moderate' | 'Low';
+
+      if (finalScore >= 85) {
+        matchLabel = 'Exceptional Match';
+        confidence = 'Very High';
+      } else if (finalScore >= 70) {
+        matchLabel = 'Strong Match';
+        confidence = 'High';
+      } else if (finalScore >= 55) {
+        matchLabel = 'Moderate Match';
+        confidence = 'Moderate';
+      } else if (finalScore >= 40) {
+        matchLabel = 'Low Match';
+        confidence = 'Low';
+      } else {
+        matchLabel = 'Weak Match';
+        confidence = 'Low';
+      }
+
+      // 7. Score Breakdown Object
+      const scoreBreakdown: ScoreBreakdown = {
+        requiredSkills: requiredSkillsAvailable ? Math.round(requiredSkillScore!) : null,
+        roleAlignment: roleAlignmentScore,
+        textSimilarity: similarityScore,
+        additionalSignals: additionalScore,
+        overallMatch: finalScore,
+        requiredSkillsAvailable
+      };
 
       const whyMatch = JobMatchingService.generateScoreAwareWhyMatch(
         finalScore,
         matchedSkills,
         missingSkills,
-        normalizedRequiredSkills
+        normalizedRequiredSkills,
+        requiredSkillsAvailable,
+        roleAlignmentScore
       );
 
       return {
@@ -656,6 +1023,8 @@ export class JobMatchingService {
         location: job.location || 'India',
         matchScore: finalScore,
         matchConfidence: confidence,
+        matchLabel: matchLabel,
+        match_label: matchLabel,
         tags: job.tags || matchedSkills,
         salary: job.salary || 'Competitive',
         salaryRange: job.salary || 'Competitive',
@@ -664,20 +1033,37 @@ export class JobMatchingService {
         requirements: job.requirements || [],
         benefits: job.benefits || ['Comprehensive Health Insurance', 'Annual Learning Stipend', 'Flexible Remote / Hybrid'],
         requiredSkills: normalizedRequiredSkills,
+        required_skills: normalizedRequiredSkills,
         matchedSkills: matchedSkills,
+        matched_skills: matchedSkills,
         missingSkills: missingSkills,
+        missing_skills: missingSkills,
         preferredSkills: preferredSkills,
+        preferred_skills: preferredSkills,
         experienceRequired: job.experience_required || job.experienceRequired || '2+ Years',
         jobType: job.employment_type || job.jobType || 'Full-Time',
         companyDescription: job.companyDescription || `${job.company} is hiring software professionals in India.`,
         postedDate: job.posted_at || job.postedDate || 'Recently',
         recommendationReason: whyMatch,
         whyMatch: whyMatch,
+        why_match: whyMatch,
         applyUrl: job.url || job.applyUrl || '',
         applicationUrl: job.url || job.applyUrl || '',
         companyWebsite: job.company_website || job.companyWebsite || job.url || '',
         similarityScore: similarityScore,
+        similarity_score: similarityScore,
         skillMatchScore: skillMatchScore,
+        skill_match_score: skillMatchScore,
+        requiredSkillScore: requiredSkillsAvailable ? Math.round(requiredSkillScore!) : null,
+        required_skill_score: requiredSkillsAvailable ? Math.round(requiredSkillScore!) : null,
+        roleAlignmentScore: roleAlignmentScore,
+        role_alignment_score: roleAlignmentScore,
+        additionalScore: additionalScore,
+        additional_score: additionalScore,
+        scoreBreakdown: scoreBreakdown,
+        score_breakdown: scoreBreakdown,
+        requiredSkillsAvailable: requiredSkillsAvailable,
+        required_skills_available: requiredSkillsAvailable,
         source: job.source || 'HireFlow Direct',
         industry: job.industry || ''
       } as JobRecommendation & { similarityScore: number; skillMatchScore: number; matchedSkills: string[]; preferredSkills: string[]; whyMatch: string };

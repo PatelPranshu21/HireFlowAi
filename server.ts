@@ -16,7 +16,13 @@ import {
   dbRemoveSavedJob,
   dbIsJobSaved,
   dbGetSavedJobsForUser,
-  dbGetUserSavedJobs
+  dbGetUserSavedJobs,
+  dbGetUserUsage,
+  dbInitializeUserUsage,
+  dbCheckFeatureEntitlement,
+  dbIncrementFeatureUsage,
+  dbGetAnalyticsOverview,
+  dbUpdateJobApplicationStatus
 } from "./src/db/postgres";
 import authRoutes, { verifyAuthHeader } from "./server/authRoutes";
 import { extractTextFromPayload, parseResumeDocument } from "./server/documentParser";
@@ -30,6 +36,7 @@ import {
   resolveUserProfile, 
   enforceFeatureEntitlement, 
   recordFeatureUsage, 
+  enforceAdminRole,
   SubscriptionRequest 
 } from "./server/subscriptionMiddleware";
 
@@ -135,8 +142,26 @@ app.get("/api/subscription/usage", async (req, res) => {
   try {
     const userProfile = await resolveUserProfile(req);
     const { profile: normProfile } = normalizeProfileSubscription(userProfile);
+
+    let dbUsage = null;
+    if (userProfile.id && userProfile.id !== 'usr_guest') {
+      dbUsage = await dbGetUserUsage(userProfile.id);
+    }
+
+    const features = dbUsage ? dbUsage.features : {
+      atsAnalyses: { used: normProfile.usageLimits?.atsAnalyses?.used || 0, limit: normProfile.usageLimits?.atsAnalyses?.max || 3, remaining: Math.max(0, (normProfile.usageLimits?.atsAnalyses?.max || 3) - (normProfile.usageLimits?.atsAnalyses?.used || 0)) },
+      aiInterviews: { used: normProfile.usageLimits?.aiInterviews?.used || 0, limit: normProfile.usageLimits?.aiInterviews?.max || 3, remaining: Math.max(0, (normProfile.usageLimits?.aiInterviews?.max || 3) - (normProfile.usageLimits?.aiInterviews?.used || 0)) },
+      coverLetterGenerations: { used: normProfile.usageLimits?.coverLetterGenerations?.used || 0, limit: normProfile.usageLimits?.coverLetterGenerations?.max || 5, remaining: Math.max(0, (normProfile.usageLimits?.coverLetterGenerations?.max || 5) - (normProfile.usageLimits?.coverLetterGenerations?.used || 0)) },
+      jobMatchAnalyses: { used: normProfile.usageLimits?.jobMatchAnalyses?.used || 0, limit: normProfile.usageLimits?.jobMatchAnalyses?.max || 10, remaining: Math.max(0, (normProfile.usageLimits?.jobMatchAnalyses?.max || 10) - (normProfile.usageLimits?.jobMatchAnalyses?.used || 0)) },
+      resumeScans: { used: normProfile.usageLimits?.resumeScans?.used || 0, limit: normProfile.usageLimits?.resumeScans?.max || 3, remaining: Math.max(0, (normProfile.usageLimits?.resumeScans?.max || 3) - (normProfile.usageLimits?.resumeScans?.used || 0)) }
+    };
+
     res.json({
       success: true,
+      plan: dbUsage?.plan || normProfile.subscriptionPlan || '3-Day Free Trial',
+      subscriptionStatus: dbUsage?.subscriptionStatus || normProfile.subscriptionStatus || 'trialing',
+      trialExpiryDate: normProfile.trialExpiryDate,
+      features,
       profile: normProfile,
       plans: PLANS
     });
@@ -177,6 +202,7 @@ app.post("/api/subscription/update-plan", async (req, res) => {
 
     const targetUserId = userId || normProfile.id;
     if (targetUserId && targetUserId !== 'usr_guest') {
+      await dbInitializeUserUsage(targetUserId, planName);
       try {
         const client = await pool.connect();
         try {
@@ -190,7 +216,18 @@ app.post("/api/subscription/update-plan", async (req, res) => {
       } catch (e) {}
     }
 
-    res.json({ success: true, profile: normProfile });
+    const updatedUsage = targetUserId ? await dbGetUserUsage(targetUserId) : null;
+    if (updatedUsage) {
+      normProfile.usageLimits = {
+        resumeScans: updatedUsage.features.resumeScans ? { used: updatedUsage.features.resumeScans.used, max: updatedUsage.features.resumeScans.limit } : { used: 0, max: 3 },
+        atsAnalyses: updatedUsage.features.atsAnalyses ? { used: updatedUsage.features.atsAnalyses.used, max: updatedUsage.features.atsAnalyses.limit } : { used: 0, max: 3 },
+        aiInterviews: updatedUsage.features.aiInterviews ? { used: updatedUsage.features.aiInterviews.used, max: updatedUsage.features.aiInterviews.limit } : { used: 0, max: 3 },
+        coverLetterGenerations: updatedUsage.features.coverLetterGenerations ? { used: updatedUsage.features.coverLetterGenerations.used, max: updatedUsage.features.coverLetterGenerations.limit } : { used: 0, max: 5 },
+        jobMatchAnalyses: updatedUsage.features.jobMatchAnalyses ? { used: updatedUsage.features.jobMatchAnalyses.used, max: updatedUsage.features.jobMatchAnalyses.limit } : { used: 0, max: 10 }
+      };
+    }
+
+    res.json({ success: true, profile: normProfile, usage: updatedUsage });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to update plan", details: err.message });
   }
@@ -274,6 +311,10 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
           match_score: m.matchScore,
           similarity_score: (m as any).similarityScore || 0,
           skill_match_score: (m as any).skillMatchScore || 0,
+          required_skill_score: (m as any).requiredSkillScore ?? null,
+          role_alignment_score: (m as any).roleAlignmentScore ?? 75,
+          additional_score: (m as any).additionalScore ?? 80,
+          score_breakdown: (m as any).scoreBreakdown || null,
           matched_skills: (m as any).matchedSkills || [],
           missing_skills: (m as any).missingSkills || [],
           preferred_skills: (m as any).preferredSkills || [],
@@ -337,10 +378,14 @@ app.post("/api/jobs/match-resume", async (req: SubscriptionRequest, res) => {
         match_score: m.matchScore,
         similarity_score: (m as any).similarityScore || 0,
         skill_match_score: (m as any).skillMatchScore || 0,
+        required_skill_score: (m as any).requiredSkillScore ?? null,
+        role_alignment_score: (m as any).roleAlignmentScore ?? 75,
+        additional_score: (m as any).additionalScore ?? 80,
+        score_breakdown: (m as any).scoreBreakdown || null,
         matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
-        missing_skills: m.missingSkills || [],
-        preferred_skills: [],
-        why_match: m.recommendationReason
+        missing_skills: (m as any).missingSkills || [],
+        preferred_skills: (m as any).preferredSkills || [],
+        why_match: m.recommendationReason || (m as any).whyMatch || ''
       }));
       await dbSaveJobMatches(userId, versionId, dbMatches);
     }
@@ -357,7 +402,7 @@ app.post("/api/jobs/match-resume", async (req: SubscriptionRequest, res) => {
 // -------------------------------------------------------------
 
 // Manual bulk JSON upload for jobs
-app.post("/api/admin/jobs/ingest", async (req, res) => {
+app.post("/api/admin/jobs/ingest", enforceAdminRole, async (req, res) => {
   try {
     // Basic admin auth check could go here
     const payload = req.body;
@@ -397,7 +442,7 @@ app.post("/api/jobs/refresh", async (req: SubscriptionRequest, res) => {
 });
 
 // Trigger external API job fetch
-app.post("/api/admin/jobs/trigger-fetch", async (req, res) => {
+app.post("/api/admin/jobs/trigger-fetch", enforceAdminRole, async (req, res) => {
   try {
     const stats = await JobIngestionService.refreshAdzunaJobs({
       resultsPerPage: req.body?.resultsPerPage || 25,
@@ -443,6 +488,10 @@ app.get("/api/jobs/matches/:resumeVersionId", async (req: SubscriptionRequest, r
         match_score: m.matchScore,
         similarity_score: (m as any).similarityScore || 0,
         skill_match_score: (m as any).skillMatchScore || 0,
+        required_skill_score: (m as any).requiredSkillScore ?? null,
+        role_alignment_score: (m as any).roleAlignmentScore ?? 75,
+        additional_score: (m as any).additionalScore ?? 80,
+        score_breakdown: (m as any).scoreBreakdown || null,
         matched_skills: (m as any).matchedSkills || [],
         missing_skills: (m as any).missingSkills || [],
         preferred_skills: (m as any).preferredSkills || [],
@@ -543,6 +592,32 @@ app.get("/api/jobs/:jobId/saved", async (req: SubscriptionRequest, res) => {
   }
 });
 
+// Analytics Overview Endpoint
+app.get("/api/analytics/overview", async (req: SubscriptionRequest, res) => {
+  try {
+    const userProfile = await resolveUserProfile(req);
+    const userId = req.userId || userProfile.id || verifyAuthHeader(req);
+    if (!userId || userId === 'usr_guest') {
+      return res.json({
+        success: true,
+        period: 'all',
+        applications: { total: 0, applied: 0, screening: 0, interview: 0, offer: 0, accepted: 0, rejected: 0, interviewRate: 0, offerRate: 0, rejectionRate: 0, acceptanceRate: 0, responseRate: 0 },
+        applicationVelocity: [],
+        jobMatches: { totalMatches: 0, avgMatchScore: 0, distribution: [], quality: { strong: 0, good: 0, moderate: 0, weak: 0 } },
+        skills: { topMissing: [], topMatched: [] },
+        savedJobs: { totalSaved: 0, savedAndApplied: 0, savedToAppliedRate: 0 }
+      });
+    }
+
+    const period = (req.query.period as string) || 'all';
+    const overview = await dbGetAnalyticsOverview(userId, period);
+    return res.json({ success: true, ...overview });
+  } catch (err: any) {
+    console.error("Error in GET /api/analytics/overview:", err);
+    res.status(500).json({ error: "Failed to fetch analytics overview", details: err.message });
+  }
+});
+
 // 2b-2. Refresh Job Matches for Specific Resume Version
 app.post("/api/jobs/refresh-for-resume/:resumeVersionId", async (req: SubscriptionRequest, res) => {
   try {
@@ -625,6 +700,11 @@ app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), asy
       matchScore: deterministicMatch.matchScore,
       similarityScore: deterministicMatch.similarityScore,
       skillMatchScore: deterministicMatch.skillMatchScore,
+      requiredSkillScore: deterministicMatch.requiredSkillScore,
+      roleAlignmentScore: deterministicMatch.roleAlignmentScore,
+      additionalScore: deterministicMatch.additionalScore,
+      scoreBreakdown: deterministicMatch.scoreBreakdown,
+      matchLabel: deterministicMatch.matchLabel,
       matchingSkills: deterministicMatch.matchedSkills,
       missingSkills: deterministicMatch.missingSkills,
       confidence: deterministicMatch.confidence,

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UserProfile } from '../types';
 import { 
   ShieldCheck, 
   LayoutDashboard, 
@@ -93,18 +94,22 @@ export type AdminSubTab =
   | 'exports'
   | 'settings';
 
-export const AdminView: React.FC = () => {
+interface AdminViewProps {
+  user?: UserProfile;
+}
+
+export const AdminView: React.FC<AdminViewProps> = ({ user }) => {
   // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // Default logged in for seamless preview
+  const [isAuthenticated] = useState(true);
   const [adminUser, setAdminUser] = useState({
-    id: 'adm_master_01',
-    name: 'Admin Console',
-    email: 'admin@hireflow.ai',
-    avatar: '',
-    role: 'Super Admin' as const,
+    id: user?.id || 'adm_master_01',
+    name: user?.name || 'Admin Console',
+    email: user?.email || 'admin@hireflow.ai',
+    avatar: user?.avatar || '',
+    role: (user?.role === 'Super Admin' ? 'Super Admin' : 'Admin') as 'Super Admin' | 'Admin' | 'Auditor',
     twoFactorEnabled: true,
-    lastLoginIp: '192.168.1.42',
-    sessionExpiresAt: 'In 8 hours'
+    lastLoginIp: '127.0.0.1',
+    sessionExpiresAt: 'Active Session'
   });
 
   // Login Form State
@@ -248,7 +253,6 @@ export const AdminView: React.FC = () => {
       lastLoginIp: '192.168.1.42',
       sessionExpiresAt: 'In 8 hours'
     });
-    setIsAuthenticated(true);
   };
 
   // Lock Screen Render
@@ -369,9 +373,9 @@ export const AdminView: React.FC = () => {
           </div>
 
           <button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={() => { window.location.hash = 'dashboard'; }}
             className="p-2 hover:bg-red-500/20 text-red-400 rounded-xl transition-colors cursor-pointer"
-            title="Sign Out Admin"
+            title="Return to User Dashboard"
           >
             <LogOut className="w-4 h-4" />
           </button>

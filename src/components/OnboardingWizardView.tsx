@@ -98,13 +98,9 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
     if (!file) return;
 
     const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-    if (extension === '.pdf') {
-      alert("Please upload a DOCX file instead of a PDF.");
-      return;
-    }
-    
-    if (extension !== '.docx') {
-      alert("Invalid file format! Please upload a DOCX document.");
+    const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
+    if (!validExtensions.includes(extension)) {
+      alert("Invalid file format! Please upload a PDF, DOCX, or TXT document.");
       return;
     }
 
@@ -174,8 +170,9 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
       title,
       experienceLevel,
       targetRole,
-      skills: selectedSkills,
-      hasUploadedResume: resumeUploaded,
+      skills: selectedSkills.length > 0 ? selectedSkills : (user.skills || []),
+      hasUploadedResume: Boolean(user.hasUploadedResume || resumeUploaded),
+      atsScore: user.atsScore || 0,
       hasCompletedOnboarding: true,
       preferences: {
         ...user.preferences,

@@ -25,8 +25,10 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'requirements' | 'process' | 'prep'>('overview');
 
-  const reqSkills = job.requiredSkills || [];
-  const missingSkills = job.missingSkills || [];
+  const reqSkills = job.requiredSkills || job.required_skills || [];
+  const missingSkillsRaw = job.missingSkills !== undefined ? job.missingSkills : (job.missing_skills !== undefined ? job.missing_skills : null);
+  const missingSkills = Array.isArray(missingSkillsRaw) ? missingSkillsRaw : [];
+  const requiredSkillsAvailable = job.requiredSkillsAvailable ?? job.required_skills_available ?? (missingSkillsRaw !== null);
   const responsibilities = job.responsibilities || [
     'Collaborate with product and design teams to deliver exceptional digital experiences.',
     'Write clean, testable, and well-documented TypeScript and React code.',
@@ -243,23 +245,29 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="bg-[#11131c] p-4 rounded-xl border border-[#434656]/30">
                   <h4 className="text-xs font-mono font-bold text-[#8d90a2] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-[#8d90a2]" /> Required Skills
+                    <CheckCircle2 className="w-4 h-4 text-[#8d90a2]" /> Required Skills ({reqSkills.length})
                   </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {reqSkills.map((sk, idx) => (
-                      <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#0052ff]/10 text-[#4cd7f6] border border-[#0052ff]/30">
-                        {sk}
-                      </span>
-                    ))}
-                  </div>
+                  {reqSkills.length === 0 ? (
+                    <p className="text-xs font-mono text-[#a1a3b8]">Required skill information unavailable for this posting.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {reqSkills.map((sk, idx) => (
+                        <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#0052ff]/10 text-[#4cd7f6] border border-[#0052ff]/30">
+                          {sk}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-[#11131c] p-4 rounded-xl border border-[#434656]/30">
                   <h4 className="text-xs font-mono font-bold text-[#d0bcff] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-[#571bc1]" /> Missing Required Skills ({missingSkills.length})
+                    <AlertCircle className="w-4 h-4 text-[#571bc1]" /> Missing Required Skills ({missingSkillsRaw !== null ? missingSkills.length : 'N/A'})
                   </h4>
-                  {missingSkills.length === 0 ? (
-                    <p className="text-xs font-mono text-[#4cd7f6]">✓ 100% required skill coverage! No gaps detected.</p>
+                  {missingSkillsRaw === null ? (
+                    <p className="text-xs font-mono text-[#a1a3b8]">Required skill information unavailable for this posting.</p>
+                  ) : missingSkills.length === 0 ? (
+                    <p className="text-xs font-mono text-[#4cd7f6]">✓ No required skill gaps detected for this role.</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {missingSkills.map((sk, idx) => (

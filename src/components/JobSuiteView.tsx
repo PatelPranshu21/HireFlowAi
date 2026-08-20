@@ -6,6 +6,7 @@ import { JobDetailsModal } from './JobDetailsModal';
 import { CompareJobsModal } from './CompareJobsModal';
 import { PreferencesView } from './PreferencesView';
 import { JobAnalyticsView } from './JobAnalyticsView';
+import { MarkAsAppliedModal } from './MarkAsAppliedModal';
 import { ResumeUploadParserModal } from './resume/ResumeUploadParserModal';
 import { UserService } from '../services/userService';
 import { checkEntitlement } from '../data/planConfig';
@@ -149,6 +150,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   const [selectedJobDetails, setSelectedJobDetails] = useState<JobRecommendation | null>(null);
   const [selectedCompanyModal, setSelectedCompanyModal] = useState<CompanyInfo | null>(null);
   const [selectedWhyMatchModal, setSelectedWhyMatchModal] = useState<JobRecommendation | null>(null);
+  const [pendingApplyJob, setPendingApplyJob] = useState<JobRecommendation | null>(null);
   const [showAddApplicationModal, setShowAddApplicationModal] = useState(false);
   const [editingApplication, setEditingApplication] = useState<ApplicationCard | null>(null);
 
@@ -295,33 +297,53 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
     }
   };
 
-  const handleApplyToJob = (job: JobRecommendation) => {
-    // Check if application already exists
-    const existing = applications.find(a => a.jobId === job.id || (a.company === job.company && a.jobTitle === job.title));
-    if (!existing) {
-      onAddApplication({
-        jobId: job.id,
-        jobTitle: job.title,
-        company: job.company,
-        companyLogo: job.companyLogo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(job.company || 'Company')}`,
-        status: 'applied',
-        locationType: job.location.toLowerCase().includes('remote') ? 'Remote' : (job.location.toLowerCase().includes('hybrid') ? 'Hybrid' : 'On-site'),
-        priority: job.matchScore >= 88,
-        timeAgo: 'Just now',
-        appliedDate: new Date().toISOString().split('T')[0],
-        jobDescription: job.description,
-        matchScore: job.matchScore,
-        statusHistory: [{ status: 'applied', timestamp: 'Just now' }]
-      });
-      showToast(`Applied to ${job.company}! Added to Application Tracker.`);
-    } else {
-      showToast(`Opened careers page for ${job.company}.`);
-    }
+  const handleConfirmMarkApplied = async (job: JobRecommendation) => {
+    const result = await UserService.saveJobApplicationApi({
+      job_id: job.id,
+      title: job.title,
+      company: job.company,
+      company_logo: job.companyLogo,
+      location: job.location,
+      salary: job.salary,
+      status: 'applied',
+      stage: 'Applied',
+      applied_date: new Date().toISOString().split('T')[0],
+      match_score: job.matchScore || 0
+    });
 
-    // Open official job application site safely in new tab using Adzuna redirect_url
+    if (result.success) {
+      if (result.isDuplicate) {
+        const existingStatus = result.application?.status || result.application?.stage || 'Applied';
+        showToast(`Already tracked in Application Tracker (Status: ${existingStatus}).`);
+        return { success: true, isDuplicate: true, currentStatus: existingStatus };
+      } else {
+        onAddApplication({
+          jobId: job.id,
+          jobTitle: job.title,
+          company: job.company,
+          companyLogo: job.companyLogo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(job.company)}`,
+          status: 'applied',
+          locationType: job.location.toLowerCase().includes('remote') ? 'Remote' : (job.location.toLowerCase().includes('hybrid') ? 'Hybrid' : 'On-site'),
+          priority: job.matchScore >= 88,
+          timeAgo: 'Just now',
+          appliedDate: new Date().toISOString().split('T')[0],
+          jobDescription: job.description,
+          matchScore: job.matchScore,
+          statusHistory: [{ status: 'applied', timestamp: 'Just now' }]
+        });
+        showToast(`Marked as Applied! Added to Application Tracker.`);
+      }
+    } else {
+      showToast(`Failed to record application. Please try again.`);
+    }
+    return { success: result.success };
+  };
+
+  const handleApplyToJob = (job: JobRecommendation) => {
     const url = job.applicationUrl || job.applyUrl || (job as any).url;
     if (url && url !== '#' && !url.startsWith('javascript:')) {
       window.open(url, '_blank', 'noopener,noreferrer');
+      setPendingApplyJob(job);
     } else {
       showToast(`Direct application URL unavailable for ${job.company}.`);
     }
@@ -853,8 +875,23 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                           {/* Match Score Badge */}
                           <div className="text-right shrink-0">
                             <span className="text-xl font-bold font-mono text-[#8d90a2] block">{job.matchScore}%</span>
-                            <span className="text-[10px] font-mono text-[#4cd7f6] uppercase tracking-wider font-semibold">
-                              {job.matchConfidence || 'High Match'}
+                            <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold ${
+                              (job.matchLabel || job.match_label) === 'Exceptional Match'
+                                ? 'text-emerald-400'
+                                : (job.matchLabel || job.match_label) === 'Strong Match'
+                                ? 'text-[#4cd7f6]'
+                                : (job.matchLabel || job.match_label) === 'Moderate Match'
+                                ? 'text-[#d0bcff]'
+                                : (job.matchLabel || job.match_label) === 'Low Match'
+                                ? 'text-amber-300'
+                                : 'text-slate-400'
+                            }`}>
+                              {job.matchLabel || job.match_label || (
+                                job.matchScore >= 85 ? 'Exceptional Match' :
+                                job.matchScore >= 70 ? 'Strong Match' :
+                                job.matchScore >= 55 ? 'Moderate Match' :
+                                job.matchScore >= 40 ? 'Low Match' : 'Weak Match'
+                              )}
                             </span>
                           </div>
                         </div>
@@ -869,22 +906,25 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                         <div className="mt-4 space-y-2">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="text-[10px] font-mono text-[#a1a3b8] uppercase mr-1">Required:</span>
-                            {job.requiredSkills?.slice(0, 4).map((sk, idx) => (
+                            {(job.requiredSkills || job.required_skills)?.slice(0, 4).map((sk, idx) => (
                               <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#0052ff]/10 text-[#4cd7f6] border border-[#0052ff]/30">
                                 {sk}
                               </span>
                             ))}
                           </div>
-                          {job.missingSkills && job.missingSkills.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-[10px] font-mono text-[#a1a3b8] uppercase mr-1">Missing:</span>
-                              {job.missingSkills.slice(0, 2).map((sk, idx) => (
-                                <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40">
-                                  + {sk}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          {(() => {
+                            const missing = job.missingSkills || job.missing_skills;
+                            return missing && missing.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[10px] font-mono text-[#a1a3b8] uppercase mr-1">Missing:</span>
+                                {missing.slice(0, 2).map((sk: string, idx: number) => (
+                                  <span key={idx} className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40">
+                                    + {sk}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
 
@@ -1572,6 +1612,14 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
         onSyncWithProfilePrompt={() => {
           showToast("Profile auto-synced with parsed resume skills and experience!");
         }}
+      />
+
+      {/* MODAL 7: Mark As Applied Modal */}
+      <MarkAsAppliedModal
+        isOpen={!!pendingApplyJob}
+        job={pendingApplyJob}
+        onClose={() => setPendingApplyJob(null)}
+        onConfirm={handleConfirmMarkApplied}
       />
 
     </div>

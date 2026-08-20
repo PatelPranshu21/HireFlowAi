@@ -1,6 +1,6 @@
 import React from 'react';
-import { X, Sparkles, CheckCircle, AlertTriangle, Target, Lightbulb, Star, BarChart3, Layers } from 'lucide-react';
-import { JobRecommendation, UserProfile } from '../types';
+import { X, Sparkles, CheckCircle, AlertTriangle, Target, Lightbulb, Star, BarChart3, Layers, Briefcase, FileText, Award } from 'lucide-react';
+import { JobRecommendation, UserProfile, MatchLabel } from '../types';
 
 interface WhyMatchModalProps {
   job: JobRecommendation;
@@ -14,19 +14,36 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
   onClose
 }) => {
   const matchedSkills: string[] = job.matchedSkills || job.matched_skills || [];
-  const missingSkills: string[] = job.missingSkills || job.missing_skills || [];
+  const missingSkillsRaw = job.missingSkills !== undefined ? job.missingSkills : (job.missing_skills !== undefined ? job.missing_skills : null);
   const preferredSkills: string[] = job.preferredSkills || job.preferred_skills || [];
   const matchScore = Number(job.matchScore ?? job.match_score ?? 0);
   const similarityScore = Number(job.similarityScore ?? job.similarity_score ?? 0);
   
-  const totalRequired = matchedSkills.length + missingSkills.length;
-  const requiredSkillCoverage = totalRequired > 0 
-    ? Math.round((matchedSkills.length / totalRequired) * 100) 
-    : (job.skillMatchScore ?? 100);
-
-  const confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = job.matchConfidence || (
-    matchScore >= 88 ? 'Very High' : matchScore >= 75 ? 'High' : matchScore >= 50 ? 'Moderate' : 'Low'
+  const scoreBreakdown = job.scoreBreakdown || job.score_breakdown;
+  const requiredSkillsAvailable = job.requiredSkillsAvailable ?? job.required_skills_available ?? (
+    scoreBreakdown ? scoreBreakdown.requiredSkillsAvailable : (missingSkillsRaw !== null)
   );
+
+  const missingSkills = Array.isArray(missingSkillsRaw) ? missingSkillsRaw : [];
+  const totalRequired = matchedSkills.length + missingSkills.length;
+  const requiredSkillScore = scoreBreakdown?.requiredSkills !== undefined 
+    ? scoreBreakdown.requiredSkills 
+    : (job.requiredSkillScore ?? job.required_skill_score ?? (
+        requiredSkillsAvailable && totalRequired > 0 
+          ? Math.round((matchedSkills.length / totalRequired) * 100) 
+          : null
+      ));
+
+  const roleAlignmentScore = scoreBreakdown?.roleAlignment ?? job.roleAlignmentScore ?? job.role_alignment_score ?? 75;
+  const additionalScore = scoreBreakdown?.additionalSignals ?? job.additionalScore ?? job.additional_score ?? 80;
+
+  // Authoritative Match Label
+  const matchLabel: MatchLabel = (job.matchLabel || job.match_label || (
+    matchScore >= 85 ? 'Exceptional Match' :
+    matchScore >= 70 ? 'Strong Match' :
+    matchScore >= 55 ? 'Moderate Match' :
+    matchScore >= 40 ? 'Low Match' : 'Weak Match'
+  )) as MatchLabel;
 
   const whyMatch = job.recommendationReason || job.whyMatch || job.why_match || `Match computed based on your technical skills and profile alignment for ${job.company}.`;
 
@@ -65,47 +82,65 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
             </div>
             <div className="text-right">
               <span className="text-2xl font-bold font-mono text-[#8d90a2] block">{matchScore}%</span>
-              <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded ${
-                confidence === 'Very High' 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                  : confidence === 'High'
+              <span className={`text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-1 rounded inline-block mt-0.5 ${
+                matchLabel === 'Exceptional Match'
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                  : matchLabel === 'Strong Match'
                   ? 'bg-[#0052ff]/15 text-[#4cd7f6] border border-[#0052ff]/30'
-                  : confidence === 'Moderate'
+                  : matchLabel === 'Moderate Match'
                   ? 'bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40'
+                  : matchLabel === 'Low Match'
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                   : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                {confidence} Match
+                {matchLabel}
               </span>
             </div>
           </div>
 
           {/* Component Score Transparency Breakdown */}
           <div className="bg-[#11131c] border border-[#434656]/30 rounded-xl p-4 space-y-3">
-            <h4 className="text-xs font-mono font-bold uppercase text-[#a1a3b8] tracking-wider flex items-center gap-1.5">
-              <BarChart3 className="w-4 h-4 text-[#4cd7f6]" /> Score Composition Breakdown
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-mono font-bold uppercase text-[#a1a3b8] tracking-wider flex items-center gap-1.5">
+                <BarChart3 className="w-4 h-4 text-[#4cd7f6]" /> Score Composition Breakdown
+              </h4>
+              <span className="text-[10px] font-mono text-[#a1a3b8]">Authoritative Formula</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
               <div className="bg-[#212433] p-3 rounded-lg border border-[#434656]/30">
                 <span className="text-[10px] font-mono text-[#a1a3b8] block uppercase">Required Skills</span>
-                <span className="text-base font-bold font-mono text-white">{requiredSkillCoverage}%</span>
-                <span className="text-[10px] font-mono text-[#a1a3b8] block mt-0.5">
-                  {matchedSkills.length}/{totalRequired || matchedSkills.length} core skills
+                <span className="text-base font-bold font-mono text-white">
+                  {requiredSkillsAvailable && requiredSkillScore !== null ? `${requiredSkillScore}%` : 'N/A'}
+                </span>
+                <span className="text-[10px] font-mono text-[#4cd7f6] block mt-0.5">
+                  70% Weight
+                </span>
+              </div>
+              <div className="bg-[#212433] p-3 rounded-lg border border-[#434656]/30">
+                <span className="text-[10px] font-mono text-[#a1a3b8] block uppercase">Role Alignment</span>
+                <span className="text-base font-bold font-mono text-white">{roleAlignmentScore}%</span>
+                <span className="text-[10px] font-mono text-[#4cd7f6] block mt-0.5">
+                  15% Weight
                 </span>
               </div>
               <div className="bg-[#212433] p-3 rounded-lg border border-[#434656]/30">
                 <span className="text-[10px] font-mono text-[#a1a3b8] block uppercase">Text Similarity</span>
                 <span className="text-base font-bold font-mono text-white">{similarityScore}%</span>
-                <span className="text-[10px] font-mono text-[#a1a3b8] block mt-0.5">
-                  TF-IDF resume overlap
+                <span className="text-[10px] font-mono text-[#4cd7f6] block mt-0.5">
+                  10% Weight
                 </span>
               </div>
               <div className="bg-[#212433] p-3 rounded-lg border border-[#434656]/30">
-                <span className="text-[10px] font-mono text-[#a1a3b8] block uppercase">Overall Match</span>
-                <span className="text-base font-bold font-mono text-[#8d90a2]">{matchScore}%</span>
-                <span className="text-[10px] font-mono text-[#a1a3b8] block mt-0.5">
-                  Weighted deterministic score
+                <span className="text-[10px] font-mono text-[#a1a3b8] block uppercase">Additional</span>
+                <span className="text-base font-bold font-mono text-white">{additionalScore}%</span>
+                <span className="text-[10px] font-mono text-[#4cd7f6] block mt-0.5">
+                  5% Weight
                 </span>
               </div>
+            </div>
+            <div className="bg-[#212433]/60 p-2.5 rounded-lg border border-[#434656]/20 flex items-center justify-between text-xs font-mono">
+              <span className="text-[#a1a3b8]">Overall Weighted Score:</span>
+              <span className="text-[#8d90a2] font-bold text-sm">{matchScore}% ({matchLabel})</span>
             </div>
           </div>
 
@@ -129,7 +164,7 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
                 Matched Skills ({matchedSkills.length})
               </h5>
               {matchedSkills.length === 0 ? (
-                <p className="text-xs font-mono text-[#a1a3b8]">No direct keyword overlap identified.</p>
+                <p className="text-xs font-mono text-[#a1a3b8]">No direct skill requirements matched.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {matchedSkills.map((sk, idx) => (
@@ -145,9 +180,11 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
             <div className="bg-[#11131c] border border-[#434656]/20 rounded-xl p-4">
               <h5 className="text-xs font-mono font-bold text-[#d0bcff] uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-[#571bc1]" />
-                Missing Required Skills ({missingSkills.length})
+                Missing Required Skills ({missingSkillsRaw !== null ? missingSkills.length : 'N/A'})
               </h5>
-              {missingSkills.length === 0 ? (
+              {missingSkillsRaw === null ? (
+                <p className="text-xs font-mono text-[#a1a3b8]">Required skill information unavailable for this role.</p>
+              ) : missingSkills.length === 0 ? (
                 <p className="text-xs font-mono text-[#4cd7f6]">✓ No required skill gaps detected for this role.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
@@ -200,7 +237,11 @@ export const WhyMatchModal: React.FC<WhyMatchModalProps> = ({
             <div>
               <h5 className="text-xs font-mono font-bold text-white uppercase tracking-wider">How To Increase Match Score</h5>
               <p className="text-xs text-[#c3c5d9] mt-1 leading-relaxed">
-                {missingSkills.length > 0 ? (
+                {!requiredSkillsAvailable ? (
+                  <>
+                    Detailed skill requirements were not provided by the employer. Emphasizing full-lifecycle experience and related tech in your resume will strengthen overall alignment.
+                  </>
+                ) : missingSkills.length > 0 ? (
                   <>
                     Adding <span className="text-[#4cd7f6] font-bold font-mono">{missingSkills.slice(0, 3).join(', ')}</span> to your resume and projects will directly maximize your interview callback match score.
                   </>

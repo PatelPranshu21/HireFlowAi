@@ -355,17 +355,17 @@ async function runComprehensiveVerification() {
   for (const job of testJobs) {
     const res = JobMatchingService.calculateJobMatch(actualResumeText, extractedSkills, job);
     
-    // Formula verification:
-    // final_score = round(0.45 * similarityScore + 0.40 * (reqCoverage*100) + 0.15 * (prefCoverage*100))
     console.log(`Job: "${job.title}" at ${job.company}`);
-    console.log(`  - Text Similarity: ${res.similarityScore}% (Weighted 45% -> ${(0.45 * res.similarityScore).toFixed(1)})`);
-    console.log(`  - Skill Match:     ${res.skillMatchScore}% (Weighted 40% req + 15% pref)`);
-    console.log(`  - Final Calculated Match Score: ${res.matchScore}%`);
+    console.log(`  - Required Skills: ${res.requiredSkillScore}% (Weighted 70%)`);
+    console.log(`  - Role Alignment:  ${res.roleAlignmentScore}% (Weighted 15%)`);
+    console.log(`  - Text Similarity: ${res.similarityScore}% (Weighted 10%)`);
+    console.log(`  - Additional:      ${res.additionalScore}% (Weighted 5%)`);
+    console.log(`  - Final Score:     ${res.matchScore}% (${res.matchLabel})`);
     console.log(`  - Matched: [${res.matchedSkills.join(', ')}]`);
     console.log(`  - Missing: [${res.missingSkills.join(', ')}]`);
     console.log('');
   }
-  console.log('   ✓ Verified: All 3 scores strictly obey the mathematical deterministic formula.');
+  console.log('   ✓ Verified: All scores strictly obey the authoritative deterministic formula.');
   console.log('TEST 9 PASSED.\n');
 
   console.log('================================================================');

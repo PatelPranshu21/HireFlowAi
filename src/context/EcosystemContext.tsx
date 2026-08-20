@@ -1072,6 +1072,25 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     });
   };
 
+  const refreshUsage = async () => {
+    const usageData = await UserService.getSubscriptionUsageApi();
+    if (usageData && usageData.features) {
+      setProfile(prev => ({
+        ...prev,
+        subscriptionPlan: usageData.plan || prev.subscriptionPlan,
+        subscriptionStatus: usageData.subscriptionStatus || prev.subscriptionStatus,
+        trialExpiryDate: usageData.trialExpiryDate || prev.trialExpiryDate,
+        usageLimits: {
+          resumeScans: { used: usageData.features.resumeScans?.used || 0, max: usageData.features.resumeScans?.limit || 3 },
+          atsAnalyses: { used: usageData.features.atsAnalyses?.used || 0, max: usageData.features.atsAnalyses?.limit || 3 },
+          aiInterviews: { used: usageData.features.aiInterviews?.used || 0, max: usageData.features.aiInterviews?.limit || 3 },
+          coverLetterGenerations: { used: usageData.features.coverLetterGenerations?.used || 0, max: usageData.features.coverLetterGenerations?.limit || 5 },
+          jobMatchAnalyses: { used: usageData.features.jobMatchAnalyses?.used || 0, max: usageData.features.jobMatchAnalyses?.limit || 10 }
+        }
+      }));
+    }
+  };
+
   const recordUsage = (type: 'resumeScans' | 'atsAnalyses' | 'aiInterviews' | 'coverLetterGenerations' | 'jobMatchAnalyses', amount: number = 1): boolean => {
     let isAllowed = true;
     setProfile(prev => {
@@ -1091,9 +1110,9 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       const currentLimits = prev.usageLimits || {
         resumeScans: { used: 0, max: 3 },
         atsAnalyses: { used: 0, max: 3 },
-        aiInterviews: { used: 0, max: 5 },
-        coverLetterGenerations: { used: 0, max: 3 },
-        jobMatchAnalyses: { used: 0, max: 5 }
+        aiInterviews: { used: 0, max: 3 },
+        coverLetterGenerations: { used: 0, max: 5 },
+        jobMatchAnalyses: { used: 0, max: 10 }
       };
 
       const item = currentLimits[type] || { used: 0, max: 10 };
@@ -1126,6 +1145,9 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
 
       return { ...prev, usageLimits: updatedLimits };
     });
+
+    // Refresh from PostgreSQL source of truth
+    refreshUsage();
 
     return isAllowed;
   };

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, TransactionItem } from '../types';
 import { CreditCard, Check, Sparkles, Shield, Zap, CheckCircle2, ArrowRight, Clock, AlertTriangle, RefreshCw, XCircle, BarChart3, Lock } from 'lucide-react';
 import { calculateTrialRemaining } from '../utils/trialUtils';
 import { useAuth } from '../context/AuthContext';
 import { PLANS, PlanName, FEATURE_NAMES } from '../data/planConfig';
+import { UserService } from '../services/userService';
 
 interface BillingViewProps {
   user: UserProfile;
@@ -39,13 +40,31 @@ export const BillingView: React.FC<BillingViewProps> = ({ user, onUpdateUser }) 
     setCancelModal(false);
   };
 
+  const [liveUsage, setLiveUsage] = useState<any>(null);
+
+  useEffect(() => {
+    UserService.getSubscriptionUsageApi().then(data => {
+      if (data && data.features) {
+        setLiveUsage(data.features);
+      }
+    });
+  }, [user.subscriptionPlan]);
+
   const currentPlanDef = PLANS[user.subscriptionPlan as PlanName] || PLANS['3-Day Free Trial'];
-  const usage = user.usageLimits || {
+  const rawUsage = user.usageLimits || {
     resumeScans: { used: 0, max: currentPlanDef.limits.atsAnalyses },
     atsAnalyses: { used: 0, max: currentPlanDef.limits.atsAnalyses },
     aiInterviews: { used: 0, max: currentPlanDef.limits.mockInterviews },
     coverLetterGenerations: { used: 0, max: currentPlanDef.limits.coverLetterGenerations },
     jobMatchAnalyses: { used: 0, max: currentPlanDef.limits.jobMatchAnalyses }
+  };
+
+  const usage = {
+    resumeScans: liveUsage?.resumeScans ? { used: liveUsage.resumeScans.used, max: liveUsage.resumeScans.limit } : rawUsage.resumeScans,
+    atsAnalyses: liveUsage?.atsAnalyses ? { used: liveUsage.atsAnalyses.used, max: liveUsage.atsAnalyses.limit } : rawUsage.atsAnalyses,
+    aiInterviews: liveUsage?.aiInterviews ? { used: liveUsage.aiInterviews.used, max: liveUsage.aiInterviews.limit } : rawUsage.aiInterviews,
+    coverLetterGenerations: liveUsage?.coverLetterGenerations ? { used: liveUsage.coverLetterGenerations.used, max: liveUsage.coverLetterGenerations.limit } : rawUsage.coverLetterGenerations,
+    jobMatchAnalyses: liveUsage?.jobMatchAnalyses ? { used: liveUsage.jobMatchAnalyses.used, max: liveUsage.jobMatchAnalyses.limit } : rawUsage.jobMatchAnalyses
   };
 
   return (
