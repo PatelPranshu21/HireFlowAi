@@ -168,7 +168,7 @@ export const CompareJobsModal: React.FC<CompareJobsModalProps> = ({
                       <div className="bg-[#191b25] p-3 rounded-lg border border-[#434656]/20">
                         <span className="text-[#a1a3b8] block text-[10px] uppercase mb-1.5">Matching Core Skills</span>
                         <div className="flex flex-wrap gap-1">
-                          {(job.requiredSkills || job.tags.slice(0, 4)).map((skill, i) => (
+                          {((job.matchedSkills && job.matchedSkills.length > 0) ? job.matchedSkills : (job.requiredSkills || job.tags.slice(0, 4))).map((skill, i) => (
                             <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-[#212433] text-[#8d90a2] border border-[#434656]/30 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3 text-[#8d90a2]" /> {skill}
                             </span>

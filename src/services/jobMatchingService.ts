@@ -221,7 +221,8 @@ export class JobMatchingService {
   }
 
   /**
-   * Builds TF-IDF vectors for a set of documents and calculates Cosine Similarity
+   * Builds TF-IDF vectors for two documents and calculates Cosine Similarity efficiently.
+   * If an optional corpus is provided, computes Document Frequency (DF) in a single linear pass.
    */
   public static calculateTfIdfCosineSimilarity(docA: string, docB: string, corpus: string[] = []): number {
     const tokensA = this.tokenize(docA);
@@ -229,69 +230,67 @@ export class JobMatchingService {
 
     if (tokensA.length === 0 || tokensB.length === 0) return 0;
 
-    // Full corpus for IDF calculation
-    const allDocs = [tokensA, tokensB, ...corpus.map(c => this.tokenize(c))];
-    const totalDocs = allDocs.length;
-
-    // Build vocabulary
-    const vocab = new Set<string>([...tokensA, ...tokensB]);
-
-    // Document Frequency (DF)
+    // Document Frequency map
     const df = new Map<string, number>();
-    for (const word of vocab) {
-      let count = 0;
-      for (const doc of allDocs) {
-        if (doc.includes(word)) count++;
+
+    const totalDocs = corpus.length > 0 ? corpus.length + 2 : 2;
+
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+
+    for (const t of setA) df.set(t, (df.get(t) || 0) + 1);
+    for (const t of setB) df.set(t, (df.get(t) || 0) + 1);
+
+    if (corpus.length > 0) {
+      for (const doc of corpus) {
+        const cTokens = this.tokenize(doc);
+        const seen = new Set(cTokens);
+        for (const t of seen) {
+          df.set(t, (df.get(t) || 0) + 1);
+        }
       }
-      df.set(word, count);
     }
 
-    // Calculate TF-IDF vectors for docA and docB
-    const getTfIdfVector = (tokens: string[]): Map<string, number> => {
-      const tf = new Map<string, number>();
-      for (const t of tokens) {
-        tf.set(t, (tf.get(t) || 0) + 1);
-      }
+    const tfA = new Map<string, number>();
+    for (const t of tokensA) tfA.set(t, (tfA.get(t) || 0) + 1);
 
-      const vec = new Map<string, number>();
-      for (const [word, count] of tf.entries()) {
-        const tfVal = count / tokens.length;
-        const dfVal = df.get(word) || 1;
-        const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
-        vec.set(word, tfVal * idfVal);
-      }
-      return vec;
-    };
+    const tfB = new Map<string, number>();
+    for (const t of tokensB) tfB.set(t, (tfB.get(t) || 0) + 1);
 
-    const vecA = getTfIdfVector(tokensA);
-    const vecB = getTfIdfVector(tokensB);
-
-    // Compute dot product and L2 norms
     let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
+    let normASq = 0;
+    let normBSq = 0;
 
-    for (const [, val] of vecA.entries()) {
-      normA += val * val;
-    }
-    for (const [, val] of vecB.entries()) {
-      normB += val * val;
-    }
+    for (const [word, count] of tfA.entries()) {
+      const tfVal = count / tokensA.length;
+      const dfVal = df.get(word) || 1;
+      const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
+      const weight = tfVal * idfVal;
+      normASq += weight * weight;
 
-    for (const [word, valA] of vecA.entries()) {
-      if (vecB.has(word)) {
-        dotProduct += valA * vecB.get(word)!;
+      if (tfB.has(word)) {
+        const tfValB = tfB.get(word)! / tokensB.length;
+        const weightB = tfValB * idfVal;
+        dotProduct += weight * weightB;
       }
     }
 
-    if (normA === 0 || normB === 0) return 0;
+    for (const [word, count] of tfB.entries()) {
+      const tfVal = count / tokensB.length;
+      const dfVal = df.get(word) || 1;
+      const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
+      const weight = tfVal * idfVal;
+      normBSq += weight * weight;
+    }
 
-    const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    if (normASq === 0 || normBSq === 0) return 0;
+
+    const similarity = dotProduct / (Math.sqrt(normASq) * Math.sqrt(normBSq));
     return Math.min(1.0, Math.max(0.0, similarity));
   }
 
   /**
-   * Deterministic matching engine between a Candidate Resume and a Job Posting
+   * Deterministic matching engine between a Candidate Resume and a Single Job Posting
    */
   public static calculateJobMatch(
     resumeText: string,
@@ -343,9 +342,7 @@ export class JobMatchingService {
       if (candidateSkillsSet.has(reqLower) || candidateSkills.some(cs => cs.toLowerCase() === reqLower)) {
         matchedSkills.push(reqSkill);
       } else {
-        // Double check text directly for multi-word or alias matches
-        const aliases = ALIAS_LOOKUP.get(reqLower) ? [reqSkill] : [reqSkill];
-        const hasTextMatch = aliases.some(a => this.cleanText(resumeText).includes(this.cleanText(a)));
+        const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
         if (hasTextMatch) {
           matchedSkills.push(reqSkill);
         } else {
@@ -398,18 +395,13 @@ export class JobMatchingService {
     else if (matchScore >= 75) confidence = 'High';
     else if (matchScore >= 50) confidence = 'Moderate';
 
-    // 9. Transparent Reason Generation
-    let whyMatch = '';
-    if (matchedSkills.length > 0) {
-      const topMatched = matchedSkills.slice(0, 4).join(', ');
-      if (missingSkills.length === 0) {
-        whyMatch = `Exceptional alignment with 100% coverage of core requirements: ${topMatched}.`;
-      } else {
-        whyMatch = `Strong technical alignment on ${topMatched}. Missing: ${missingSkills.slice(0, 2).join(', ')}.`;
-      }
-    } else {
-      whyMatch = `Low keyword and technology overlap with your profile. Missing: ${normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
-    }
+    // 9. Score-Aware Transparent Reason Generation
+    const whyMatch = JobMatchingService.generateScoreAwareWhyMatch(
+      matchScore,
+      matchedSkills,
+      missingSkills,
+      normalizedRequiredSkills
+    );
 
     return {
       matchScore,
@@ -426,7 +418,55 @@ export class JobMatchingService {
   }
 
   /**
-   * Matches candidate resume against a full list of available jobs
+   * Helper to generate honest, score-aware explanation text
+   */
+  public static generateScoreAwareWhyMatch(
+    matchScore: number,
+    matchedSkills: string[],
+    missingSkills: string[],
+    normalizedRequiredSkills: string[]
+  ): string {
+    const topMatched = matchedSkills.slice(0, 4).join(', ');
+    const topMissing = missingSkills.slice(0, 2).join(', ');
+
+    if (matchScore >= 90) {
+      if (missingSkills.length === 0) {
+        return `Exceptional match (${matchScore}%). 100% required skill coverage (${topMatched}) with strong overall profile alignment.`;
+      }
+      return `Exceptional match (${matchScore}%). High alignment on ${topMatched}. Gaps: ${topMissing}.`;
+    }
+
+    if (matchScore >= 75) {
+      if (missingSkills.length === 0) {
+        return `Strong match (${matchScore}%). 100% required skill coverage (${topMatched}) with solid technical alignment.`;
+      }
+      return `Strong match (${matchScore}%). Core alignment on ${topMatched}. Missing: ${topMissing}.`;
+    }
+
+    if (matchScore >= 60) {
+      if (missingSkills.length === 0) {
+        return `Good match (${matchScore}%). All listed core skills matched (${topMatched}), with moderate overall job description overlap.`;
+      }
+      return `Good match (${matchScore}%). Alignment on ${topMatched}. Missing: ${topMissing}.`;
+    }
+
+    if (matchScore >= 40) {
+      if (missingSkills.length === 0) {
+        return `Moderate match (${matchScore}%). You match the required skills (${topMatched}), but broader experience and domain context have moderate overlap.`;
+      }
+      return `Moderate match (${matchScore}%). Partial skill alignment on ${topMatched}. Missing: ${topMissing}.`;
+    }
+
+    // matchScore < 40
+    if (missingSkills.length === 0 && matchedSkills.length > 0) {
+      return `Low match (${matchScore}%). Core skill (${topMatched}) matched, but overall role profile has low similarity.`;
+    }
+    return `Low match (${matchScore}%). Low keyword overlap with your profile. Missing: ${normalizedRequiredSkills.slice(0, 3).join(', ')}.`;
+  }
+
+  /**
+   * Matches candidate resume against a full list of available jobs in O(N) linear time.
+   * Pre-tokenizes corpus and resume once, avoiding quadratic loops.
    */
   public static matchResumeAgainstJobs(
     resumeText: string,
@@ -438,27 +478,155 @@ export class JobMatchingService {
       return [];
     }
 
-    const corpus = jobs.map(j => `${j.title || ''} ${j.description || ''} ${(j.skills || j.requiredSkills || []).join(' ')}`);
+    const candExtracted = this.extractSkills(resumeText, candidateSkills);
+    const candidateSkillsSet = new Set(candExtracted.map(s => s.toLowerCase()));
+    const resumeTokens = this.tokenize(resumeText);
 
-    const scoredJobs = jobs.map(job => {
-      const matchResult = this.calculateJobMatch(
-        resumeText,
-        candidateSkills,
-        {
-          id: job.id,
-          title: job.title,
-          company: job.company,
-          description: job.description,
-          requiredSkills: job.skills || job.requiredSkills || [],
-          tags: job.tags || [],
-          responsibilities: job.responsibilities || [],
-          requirements: job.requirements || []
-        },
-        corpus
+    // 1. Pre-tokenize all jobs and construct DF map in a single pass O(N)
+    const jobTokensList: string[][] = new Array(jobs.length);
+    const df = new Map<string, number>();
+
+    const resumeUnique = new Set(resumeTokens);
+    for (const t of resumeUnique) {
+      df.set(t, 1);
+    }
+
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i];
+      const combinedJobText = [
+        job.title,
+        job.description,
+        ...(job.skills || job.requiredSkills || []),
+        ...(job.tags || []),
+        ...(job.requirements || []),
+        ...(job.responsibilities || [])
+      ].join('\n');
+
+      const jTokens = this.tokenize(combinedJobText);
+      jobTokensList[i] = jTokens;
+
+      const seen = new Set(jTokens);
+      for (const t of seen) {
+        df.set(t, (df.get(t) || 0) + 1);
+      }
+    }
+
+    const totalDocs = jobs.length + 1;
+
+    // 2. Pre-calculate resume TF-IDF vector & norm
+    const tfResume = new Map<string, number>();
+    for (const t of resumeTokens) {
+      tfResume.set(t, (tfResume.get(t) || 0) + 1);
+    }
+
+    const vecResume = new Map<string, number>();
+    let normResumeSq = 0;
+    for (const [word, count] of tfResume.entries()) {
+      const tfVal = count / resumeTokens.length;
+      const dfVal = df.get(word) || 1;
+      const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
+      const weight = tfVal * idfVal;
+      vecResume.set(word, weight);
+      normResumeSq += weight * weight;
+    }
+    const normResume = Math.sqrt(normResumeSq);
+
+    // 3. Score each job in a single fast pass
+    const scoredJobs = jobs.map((job, idx) => {
+      const jTokens = jobTokensList[idx];
+
+      // TF-IDF Cosine Similarity
+      let similarity = 0;
+      if (normResume > 0 && jTokens.length > 0) {
+        const tfJob = new Map<string, number>();
+        for (const t of jTokens) {
+          tfJob.set(t, (tfJob.get(t) || 0) + 1);
+        }
+
+        let dotProduct = 0;
+        let normJobSq = 0;
+
+        for (const [word, count] of tfJob.entries()) {
+          const tfVal = count / jTokens.length;
+          const dfVal = df.get(word) || 1;
+          const idfVal = Math.log((totalDocs + 1) / (dfVal + 1)) + 1;
+          const weight = tfVal * idfVal;
+          normJobSq += weight * weight;
+
+          const weightResume = vecResume.get(word);
+          if (weightResume !== undefined) {
+            dotProduct += weightResume * weight;
+          }
+        }
+
+        const normJob = Math.sqrt(normJobSq);
+        if (normResume > 0 && normJob > 0) {
+          similarity = Math.min(1.0, Math.max(0.0, dotProduct / (normResume * normJob)));
+        }
+      }
+
+      const similarityScore = Math.round(similarity * 100);
+
+      // Skill Extraction & Overlap
+      const jobExtractedSkills = this.extractSkills(
+        [job.title, job.description, ...(job.skills || job.requiredSkills || []), ...(job.tags || [])].join('\n'),
+        [...(job.skills || job.requiredSkills || []), ...(job.tags || [])]
       );
 
+      const rawRequired = (job.skills && job.skills.length > 0)
+        ? job.skills
+        : (job.requiredSkills && job.requiredSkills.length > 0
+          ? job.requiredSkills
+          : (job.tags && job.tags.length > 0 ? job.tags : jobExtractedSkills.slice(0, 5)));
+
+      const normalizedRequiredSkills = Array.from(new Set(rawRequired.map((r: string) => this.normalizeSkillName(r)))) as string[];
+
+      const matchedSkills: string[] = [];
+      const missingSkills: string[] = [];
+
+      normalizedRequiredSkills.forEach(reqSkill => {
+        const reqLower = reqSkill.toLowerCase();
+        if (candidateSkillsSet.has(reqLower) || candExtracted.some(cs => cs.toLowerCase() === reqLower)) {
+          matchedSkills.push(reqSkill);
+        } else {
+          const hasTextMatch = this.cleanText(resumeText).includes(this.cleanText(reqSkill));
+          if (hasTextMatch) {
+            matchedSkills.push(reqSkill);
+          } else {
+            missingSkills.push(reqSkill);
+          }
+        }
+      });
+
+      const totalRequired = normalizedRequiredSkills.length || 1;
+      const requiredSkillCoverage = matchedSkills.length / totalRequired;
+
+      const extraJobSkills = jobExtractedSkills.filter(s => !normalizedRequiredSkills.includes(s));
+      let matchedPreferredCount = 0;
+      const preferredSkills: string[] = [];
+
+      extraJobSkills.forEach(ps => {
+        if (candidateSkillsSet.has(ps.toLowerCase())) {
+          matchedPreferredCount++;
+          preferredSkills.push(ps);
+        }
+      });
+
+      const preferredSkillCoverage = extraJobSkills.length > 0
+        ? matchedPreferredCount / extraJobSkills.length
+        : (matchedSkills.length > 0 ? 0.8 : 0.0);
+
+      const skillMatchScore = Math.round((requiredSkillCoverage * 0.75 + preferredSkillCoverage * 0.25) * 100);
+
+      const rawScore = Math.round(
+        (0.45 * (similarity * 100)) +
+        (0.40 * (requiredSkillCoverage * 100)) +
+        (0.15 * (preferredSkillCoverage * 100))
+      );
+
+      let finalScore = Math.min(100, Math.max(0, rawScore));
+
       // Extra role bonus if targetRole matches title
-      let finalScore = matchResult.matchScore;
       if (targetRole && targetRole.trim()) {
         const targetClean = this.cleanText(targetRole);
         const titleClean = this.cleanText(job.title);
@@ -468,9 +636,16 @@ export class JobMatchingService {
       }
 
       let confidence: 'Very High' | 'High' | 'Moderate' | 'Low' = 'Low';
-      if (finalScore >= 85) confidence = 'Very High';
-      else if (finalScore >= 70) confidence = 'High';
-      else if (finalScore >= 45) confidence = 'Moderate';
+      if (finalScore >= 88) confidence = 'Very High';
+      else if (finalScore >= 75) confidence = 'High';
+      else if (finalScore >= 50) confidence = 'Moderate';
+
+      const whyMatch = JobMatchingService.generateScoreAwareWhyMatch(
+        finalScore,
+        matchedSkills,
+        missingSkills,
+        normalizedRequiredSkills
+      );
 
       return {
         id: job.id,
@@ -481,29 +656,31 @@ export class JobMatchingService {
         location: job.location || 'India',
         matchScore: finalScore,
         matchConfidence: confidence,
-        tags: job.tags || matchResult.matchedSkills,
+        tags: job.tags || matchedSkills,
         salary: job.salary || 'Competitive',
         salaryRange: job.salary || 'Competitive',
         description: job.description,
         responsibilities: job.responsibilities || [],
         requirements: job.requirements || [],
         benefits: job.benefits || ['Comprehensive Health Insurance', 'Annual Learning Stipend', 'Flexible Remote / Hybrid'],
-        requiredSkills: matchResult.jobRequiredSkills,
-        matchedSkills: matchResult.matchedSkills,
-        missingSkills: matchResult.missingSkills,
+        requiredSkills: normalizedRequiredSkills,
+        matchedSkills: matchedSkills,
+        missingSkills: missingSkills,
+        preferredSkills: preferredSkills,
         experienceRequired: job.experience_required || job.experienceRequired || '2+ Years',
         jobType: job.employment_type || job.jobType || 'Full-Time',
         companyDescription: job.companyDescription || `${job.company} is hiring software professionals in India.`,
         postedDate: job.posted_at || job.postedDate || 'Recently',
-        recommendationReason: matchResult.whyMatch,
+        recommendationReason: whyMatch,
+        whyMatch: whyMatch,
         applyUrl: job.url || job.applyUrl || '',
         applicationUrl: job.url || job.applyUrl || '',
         companyWebsite: job.company_website || job.companyWebsite || job.url || '',
-        similarityScore: matchResult.similarityScore,
-        skillMatchScore: matchResult.skillMatchScore,
+        similarityScore: similarityScore,
+        skillMatchScore: skillMatchScore,
         source: job.source || 'HireFlow Direct',
         industry: job.industry || ''
-      } as JobRecommendation & { similarityScore: number; skillMatchScore: number; matchedSkills: string[] };
+      } as JobRecommendation & { similarityScore: number; skillMatchScore: number; matchedSkills: string[]; preferredSkills: string[]; whyMatch: string };
     });
 
     // Filter out jobs that have 0 matched skills AND matchScore < 20%

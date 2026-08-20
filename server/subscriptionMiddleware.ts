@@ -141,9 +141,8 @@ export function enforceFeatureEntitlement(feature: FeatureKey) {
       req.userProfile = userProfile;
       req.userId = userProfile.id;
 
-      // TEMP DEBUG: subscription bypass for resume analysis debugging
-      // Allows /api/ai/analyze-resume, parse-resume, and resume persistence to run unblocked during analysis pipeline debugging
-      if (feature === 'atsAnalyses' || (feature as string) === 'resumeScans') {
+      // Development bypass flag to unblock local testing
+      if (process.env.DISABLE_SUBSCRIPTION_FOR_DEV === 'true') {
         return next();
       }
 
@@ -159,7 +158,8 @@ export function enforceFeatureEntitlement(feature: FeatureKey) {
           max: entitlement.max,
           planName: entitlement.planName,
           message: entitlement.message,
-          upgradeRequired: true
+          upgradeRequired: true,
+          details: entitlement
         });
       }
 

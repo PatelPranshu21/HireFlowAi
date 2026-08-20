@@ -117,12 +117,26 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
               <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-[#d0bcff]' : ''}`} />
               {isSaved ? 'Saved' : 'Save'}
             </button>
-            <button
-              onClick={() => onApply(job)}
-              className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg cursor-pointer"
-            >
-              Apply Now <ExternalLink className="w-4 h-4" />
-            </button>
+            {(() => {
+              const applyUrl = job.applicationUrl || job.applyUrl || (job as any).url;
+              const hasValidUrl = !!applyUrl && applyUrl !== '#' && !applyUrl.startsWith('javascript:');
+              return hasValidUrl ? (
+                <button
+                  onClick={() => onApply(job)}
+                  className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+                >
+                  Apply Now <ExternalLink className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="bg-[#212433]/40 text-[#717388] border border-[#434656]/30 text-xs font-mono font-medium px-4 py-2.5 rounded-xl cursor-not-allowed"
+                  title="Application link not available"
+                >
+                  Application Link Unavailable
+                </button>
+              );
+            })()}
           </div>
         </div>
 
@@ -242,15 +256,19 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
 
                 <div className="bg-[#11131c] p-4 rounded-xl border border-[#434656]/30">
                   <h4 className="text-xs font-mono font-bold text-[#d0bcff] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-[#571bc1]" /> Recommended Skill Improvements
+                    <AlertCircle className="w-4 h-4 text-[#571bc1]" /> Missing Required Skills ({missingSkills.length})
                   </h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {missingSkills.map((sk, idx) => (
-                      <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40">
-                        + {sk}
-                      </span>
-                    ))}
-                  </div>
+                  {missingSkills.length === 0 ? (
+                    <p className="text-xs font-mono text-[#4cd7f6]">✓ 100% required skill coverage! No gaps detected.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {missingSkills.map((sk, idx) => (
+                        <span key={idx} className="text-xs font-mono px-2.5 py-1 rounded-md bg-[#571bc1]/20 text-[#d0bcff] border border-[#571bc1]/40">
+                          ○ {sk}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -350,12 +368,25 @@ export const JobDetailsModal: React.FC<JobDetailsModalProps> = ({
               <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-[#d0bcff]' : ''}`} />
               {isSaved ? 'Saved' : 'Save Job'}
             </button>
-            <button
-              onClick={() => onApply(job)}
-              className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-6 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-lg"
-            >
-              Apply on Official Careers Site <ExternalLink className="w-4 h-4" />
-            </button>
+            {(() => {
+              const applyUrl = job.applicationUrl || job.applyUrl || (job as any).url;
+              const hasValidUrl = !!applyUrl && applyUrl !== '#' && !applyUrl.startsWith('javascript:');
+              return hasValidUrl ? (
+                <button
+                  onClick={() => onApply(job)}
+                  className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-6 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-lg"
+                >
+                  Apply on Official Careers Site <ExternalLink className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="bg-[#212433]/40 text-[#717388] border border-[#434656]/30 text-xs font-mono font-medium px-6 py-2.5 rounded-xl cursor-not-allowed"
+                >
+                  Application Link Unavailable
+                </button>
+              );
+            })()}
           </div>
         </div>
 

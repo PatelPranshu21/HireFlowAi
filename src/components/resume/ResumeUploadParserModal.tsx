@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, ParsedResumeData, UploadHistoryItem } from '../../types';
+import { checkEntitlement } from '../../data/planConfig';
 import { 
   Upload, 
   FileText, 
@@ -20,7 +21,11 @@ import {
   Save, 
   Trash2,
   Plus,
-  Loader2
+  Loader2,
+  Lock,
+  Clock,
+  ArrowRight,
+  Sparkles
 } from 'lucide-react';
 
 interface ResumeUploadParserModalProps {
@@ -79,11 +84,15 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
   const [history, setHistory] = useState<UploadHistoryItem[]>(mockUploadHistory);
   const [activeTab, setActiveTab] = useState<'upload' | 'history'>('upload');
 
+  const entitlement = checkEntitlement(user, 'resumeUploads');
+  const isUploadAllowed = entitlement.allowed;
+
   if (!isOpen) return null;
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isUploadAllowed) return;
     if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
     } else if (e.type === "dragleave") {
@@ -93,11 +102,21 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
 
   const validateAndProcessFile = (file: File) => {
     setUploadError(null);
-    const validTypes = ['.pdf', '.docx', '.txt'];
+
+    // Verify subscription and plan limits before uploading
+    if (!isUploadAllowed) {
+      setUploadError(entitlement.message);
+      if ((window as any).__showLimitReachedModal) {
+        (window as any).__showLimitReachedModal(entitlement);
+      }
+      return;
+    }
+
     const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
 
+    const validTypes = ['.pdf', '.docx', '.doc', '.txt'];
     if (!validTypes.includes(extension)) {
-      setUploadError("Invalid file format! Please upload a PDF, DOCX, or TXT document.");
+      setUploadError("Invalid file format! Please upload a PDF, DOCX, DOC, or TXT document.");
       return;
     }
 
@@ -113,12 +132,9 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
     const reader = new FileReader();
     reader.onload = async (evt) => {
       const base64Data = (evt.target?.result as string) || '';
-      setUploadProgress(40);
+      setUploadProgress(50);
 
       try {
-        await new Promise(r => setTimeout(r, 400));
-        setUploadProgress(65);
-
         const res = await fetch('/api/ai/parse-resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -126,13 +142,16 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
         });
         const data = await res.json();
         if (!res.ok || data.extractionSuccess === false || !data.text) {
-          throw new Error(data.error || "Text extraction failed: No selectable text found in uploaded file.");
+          if (res.status === 403 && data.details) {
+            if ((window as any).__showLimitReachedModal) {
+              (window as any).__showLimitReachedModal(data.details);
+            }
+          }
+          throw new Error(data.message || data.error || "Text extraction failed: No selectable text found in uploaded file.");
         }
         const extractedText = data.text || data.extractedText;
         setUploadedFileText(extractedText);
         
-        setUploadProgress(85);
-        await new Promise(r => setTimeout(r, 400));
         setUploadProgress(100);
 
         const newParsed: ParsedResumeData = {
@@ -198,6 +217,14 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
       await onSaveParsedResume(parsedData, uploadedFileName, uploadedFileText);
       onSyncWithProfilePrompt(parsedData);
       onClose();
+    } catch (err: any) {
+      if (err.message === 'LIMIT_REACHED' && err.details) {
+        if ((window as any).__showLimitReachedModal) {
+          (window as any).__showLimitReachedModal(err.details);
+        }
+      } else {
+        alert(err.message || 'An error occurred while uploading.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -214,7 +241,7 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
             </div>
             <div>
               <h3 className="text-lg font-bold font-geist text-[#e1e1ef]">Resume Upload &amp; AI Parser</h3>
-              <p className="text-xs text-[#c3c5d9]">Supported formats: PDF, DOCX, TXT (Max 10MB)</p>
+              <p className="text-xs text-[#c3c5d9]">Supported formats: DOCX (Max 10MB)</p>
             </div>
           </div>
 
@@ -265,13 +292,49 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
                 >
                   <input
                     type="file"
-                    accept=".pdf,.docx,.txt"
+                    accept=".pdf,.docx,.doc,.txt"
                     onChange={handleFileInput}
                     className="hidden"
                     id="resume-file-input"
                   />
 
-                  {isParsing ? (
+                  {!isUploadAllowed ? (
+                    <div className="space-y-4 py-6 max-w-md mx-auto">
+                      <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+                        {entitlement.reason === 'trial_expired' ? (
+                          <Clock className="w-7 h-7" />
+                        ) : (
+                          <Lock className="w-7 h-7" />
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white font-geist">
+                          {entitlement.reason === 'trial_expired'
+                            ? '3-Day Free Trial Expired'
+                            : 'Resume Upload Limit Reached'}
+                        </h4>
+                        <p className="text-xs text-[#c3c5d9] mt-1.5 leading-relaxed">
+                          {entitlement.message}
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            if ((window as any).__showLimitReachedModal) {
+                              (window as any).__showLimitReachedModal(entitlement);
+                            }
+                          }}
+                          className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold transition-all shadow-lg shadow-blue-500/25 inline-flex items-center gap-2 cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4 text-blue-200" />
+                          Upgrade Plan to Upload Resumes
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : isParsing ? (
                     <div className="space-y-4 py-6">
                       <RefreshCw className="w-10 h-10 text-[#4cd7f6] animate-spin mx-auto" />
                       <div>
@@ -316,7 +379,7 @@ export const ResumeUploadParserModal: React.FC<ResumeUploadParserModalProps> = (
                         <p className="text-xs text-[#c3c5d9] mt-1 font-mono">or click to browse your local computer</p>
                       </div>
                       <div className="inline-block px-3 py-1 bg-[#282934] text-[#b7c4ff] rounded-lg text-xs font-mono font-medium border border-[#434656]/30">
-                        PDF • DOCX • TXT
+                        PDF, DOCX, DOC, TXT (up to 10MB)
                       </div>
                     </label>
                   )}

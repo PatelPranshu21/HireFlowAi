@@ -317,7 +317,7 @@ export class UserService {
     versionId?: string;
     versionName?: string;
     analysisData?: any;
-  }): Promise<{ success: boolean; analysisData?: any; score?: number }> {
+  }): Promise<{ success: boolean; analysisData?: any; score?: number; jobRecommendations?: any[]; error?: string; details?: any }> {
     try {
       const token = this.getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -329,7 +329,14 @@ export class UserService {
         body: JSON.stringify(payload)
       });
       const json = await res.json();
-      return { success: res.ok && json.success, analysisData: json.analysisData, score: json.score };
+      return { 
+        success: res.ok && json.success !== false, 
+        analysisData: json.analysisData, 
+        score: json.score,
+        jobRecommendations: json.jobRecommendations,
+        error: json.error,
+        details: json.details
+      };
     } catch (err) {
       console.error('Error uploading resume API:', err);
       return { success: false };
@@ -472,22 +479,81 @@ export class UserService {
     }
   }
 
-  public static async saveSavedJobApi(jobId: string, action: 'add' | 'remove' = 'add'): Promise<boolean> {
+  public static async getSavedJobsApi(): Promise<any[]> {
     try {
       const token = this.getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/auth/saved-job', {
+      const res = await fetch('/api/jobs/saved', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return data.jobs || [];
+      }
+      return [];
+    } catch (err) {
+      console.error('Error fetching saved jobs API:', err);
+      return [];
+    }
+  }
+
+  public static async saveJobApi(jobId: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/save`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ jobId, action })
+        headers
       });
       return res.ok;
     } catch (err) {
-      console.error('Error updating saved job API:', err);
+      console.error('Error saving job API:', err);
       return false;
     }
+  }
+
+  public static async unsaveJobApi(jobId: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/save`, {
+        method: 'DELETE',
+        headers
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error unsaving job API:', err);
+      return false;
+    }
+  }
+
+  public static async isJobSavedApi(jobId: string): Promise<boolean> {
+    try {
+      const token = this.getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/saved`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return !!data.saved;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error checking isJobSaved API:', err);
+      return false;
+    }
+  }
+
+  public static async saveSavedJobApi(jobId: string, action: 'add' | 'remove' = 'add'): Promise<boolean> {
+    if (action === 'remove') {
+      return this.unsaveJobApi(jobId);
+    }
+    return this.saveJobApi(jobId);
   }
 
   public static async saveInterviewSessionApi(session: any): Promise<boolean> {

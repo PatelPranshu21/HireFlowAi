@@ -222,7 +222,18 @@ export async function initDb(): Promise<boolean> {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
-        -- Table 7: user_saved_jobs
+        -- Table 7: saved_jobs (User-specific persistent saved jobs)
+        CREATE TABLE IF NOT EXISTS saved_jobs (
+          id VARCHAR(255) PRIMARY KEY,
+          user_id ${fkType} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          job_id VARCHAR(255) NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+          saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CONSTRAINT saved_jobs_user_job_key UNIQUE(user_id, job_id)
+        );
+
+        -- Legacy table for backward compatibility
         CREATE TABLE IF NOT EXISTS user_saved_jobs (
           id VARCHAR(255) PRIMARY KEY,
           user_id ${fkType} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -230,6 +241,18 @@ export async function initDb(): Promise<boolean> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           CONSTRAINT user_saved_jobs_user_job_key UNIQUE(user_id, job_id)
         );
+
+        -- Migrate any existing records from user_saved_jobs into saved_jobs
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'user_saved_jobs') THEN
+            INSERT INTO saved_jobs (id, user_id, job_id, saved_at, created_at, updated_at)
+            SELECT id, user_id, job_id, created_at, created_at, created_at
+            FROM user_saved_jobs
+            WHERE job_id IN (SELECT id FROM jobs)
+            ON CONFLICT (user_id, job_id) DO NOTHING;
+          END IF;
+        END $$;
 
         -- Table 8: user_interview_sessions
         CREATE TABLE IF NOT EXISTS user_interview_sessions (
@@ -330,19 +353,23 @@ export async function initDb(): Promise<boolean> {
         CREATE INDEX IF NOT EXISTS idx_ats_reports_user ON ats_reports(user_id);
         CREATE INDEX IF NOT EXISTS idx_job_apps_user ON user_job_applications(user_id);
         CREATE INDEX IF NOT EXISTS idx_saved_jobs_user ON user_saved_jobs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_saved_jobs_user_id ON saved_jobs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_saved_jobs_job_id ON saved_jobs(job_id);
+        CREATE INDEX IF NOT EXISTS idx_saved_jobs_saved_at ON saved_jobs(saved_at DESC);
         CREATE INDEX IF NOT EXISTS idx_interviews_user ON user_interview_sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_calendar_user ON user_calendar_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_productivity_user_key ON user_productivity_data(user_id, data_key);
         CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
         CREATE INDEX IF NOT EXISTS idx_jobs_location ON jobs(location);
         CREATE INDEX IF NOT EXISTS idx_jobs_active ON jobs(is_active);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_source_external_id ON jobs(source, external_job_id) WHERE external_job_id IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_job_matches_user_version ON job_matches(user_id, resume_version_id);
 
         -- Add analysis_data column to resume_versions if missing
         ALTER TABLE resume_versions ADD COLUMN IF NOT EXISTS analysis_data JSONB;
       `);
       isPostgresAvailable = true;
-      console.log('[PostgreSQL] All 11 persistent database tables initialized successfully.');
+      console.log('[PostgreSQL] All persistent database tables initialized successfully (including saved_jobs).');
       return true;
     } finally {
       client.release();
@@ -606,8 +633,12 @@ export async function dbUpdateUserProfile(
            onboarding_completed_at = $5,
            auth_provider = $6,
            provider_id = $7,
-           updated_at = $8
-       WHERE id = $9
+           subscription_plan = COALESCE($8, subscription_plan),
+           subscription_status = COALESCE($9, subscription_status),
+           trial_start_date = COALESCE($10, trial_start_date),
+           trial_expiry_date = COALESCE($11, trial_expiry_date),
+           updated_at = $12
+       WHERE id = $13
        RETURNING *`,
       [
         JSON.stringify(cleanMergedProfile),
@@ -617,6 +648,10 @@ export async function dbUpdateUserProfile(
         onboardingCompletedAt,
         authProvider,
         providerId,
+        cleanMergedProfile.subscriptionPlan || null,
+        cleanMergedProfile.subscriptionStatus || null,
+        cleanMergedProfile.trialStartDate || null,
+        cleanMergedProfile.trialExpiryDate || null,
         now,
         id
       ]
@@ -891,19 +926,35 @@ export interface DbJobRecord {
   is_active?: boolean;
 }
 
-export async function dbSaveJobs(jobs: DbJobRecord[]): Promise<number> {
+export interface DbJobUpsertStats {
+  inserted: number;
+  updated: number;
+  skipped: number;
+}
+
+export async function dbSaveJobsDetailed(jobs: DbJobRecord[]): Promise<DbJobUpsertStats> {
   const p = getPool();
-  if (!p || !isPostgresAvailable || !jobs || jobs.length === 0) return 0;
-  let count = 0;
+  if (!p || !isPostgresAvailable || !jobs || jobs.length === 0) {
+    return { inserted: 0, updated: 0, skipped: 0 };
+  }
+
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
   for (const j of jobs) {
     try {
-      await p.query(
+      const conflictClause = j.external_job_id
+        ? `ON CONFLICT (source, external_job_id) WHERE external_job_id IS NOT NULL DO UPDATE SET`
+        : `ON CONFLICT (id) DO UPDATE SET`;
+
+      const res = await p.query(
         `INSERT INTO jobs (
           id, external_job_id, source, company, title, location, description, url,
           posted_at, employment_type, experience_required, salary, skills, tags,
           responsibilities, requirements, company_logo, company_website, industry, is_active, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW())
-        ON CONFLICT (id) DO UPDATE SET
+        ${conflictClause}
           company = EXCLUDED.company,
           title = EXCLUDED.title,
           location = EXCLUDED.location,
@@ -921,11 +972,12 @@ export async function dbSaveJobs(jobs: DbJobRecord[]): Promise<number> {
           company_website = EXCLUDED.company_website,
           industry = EXCLUDED.industry,
           is_active = EXCLUDED.is_active,
-          updated_at = NOW()`,
+          updated_at = NOW()
+        RETURNING (xmax = 0) AS is_inserted`,
         [
           j.id,
           j.external_job_id || null,
-          j.source || 'hireflow_ingest',
+          j.source || 'adzuna',
           sanitizePgString(j.company),
           sanitizePgString(j.title),
           sanitizePgString(j.location || 'India'),
@@ -945,12 +997,40 @@ export async function dbSaveJobs(jobs: DbJobRecord[]): Promise<number> {
           j.is_active !== false
         ]
       );
-      count++;
+      if (res.rows.length > 0 && res.rows[0].is_inserted) {
+        inserted++;
+      } else {
+        updated++;
+      }
     } catch (err) {
       console.error('[PostgreSQL] Error in dbSaveJobs for job:', j.id, err);
+      skipped++;
     }
   }
-  return count;
+
+  return { inserted, updated, skipped };
+}
+
+export async function dbSaveJobs(jobs: DbJobRecord[]): Promise<number> {
+  const stats = await dbSaveJobsDetailed(jobs);
+  return stats.inserted + stats.updated;
+}
+
+export async function dbExpireStaleJobs(activeExternalIds: string[], source: string = 'adzuna'): Promise<number> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable || !activeExternalIds || activeExternalIds.length === 0) return 0;
+  try {
+    const res = await p.query(
+      `UPDATE jobs 
+       SET is_active = FALSE, updated_at = NOW() 
+       WHERE source = $1 AND is_active = TRUE AND external_job_id IS NOT NULL AND NOT (external_job_id = ANY($2::varchar[]))`,
+      [source, activeExternalIds]
+    );
+    return res.rowCount || 0;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbExpireStaleJobs:', err);
+    return 0;
+  }
 }
 
 export async function dbGetAllJobs(): Promise<DbJobRecord[]> {
@@ -1024,15 +1104,23 @@ export async function dbGetJobById(jobId: string): Promise<DbJobRecord | null> {
 export interface DbJobMatchRecord {
   id?: string;
   user_id?: string;
-  resume_version_id: string;
-  job_id: string;
-  match_score: number;
+  resume_version_id?: string;
+  job_id?: string;
+  match_score?: number;
+  matchScore?: number;
   similarity_score?: number;
+  similarityScore?: number;
   skill_match_score?: number;
-  matched_skills: string[];
-  missing_skills: string[];
+  skillMatchScore?: number;
+  matched_skills?: string[];
+  matchedSkills?: string[];
+  missing_skills?: string[];
+  missingSkills?: string[];
   preferred_skills?: string[];
+  preferredSkills?: string[];
   why_match?: string;
+  whyMatch?: string;
+  recommendationReason?: string;
 }
 
 export async function dbSaveJobMatches(
@@ -1054,8 +1142,16 @@ export async function dbSaveJobMatches(
     await p.query('DELETE FROM job_matches WHERE user_id = $1 AND resume_version_id = $2', [userId, resumeVersionId]);
 
     for (const m of matches) {
-      const matchId = `jm_${userId}_${resumeVersionId}_${m.job_id}`;
-      const cleanWhy = sanitizePgString(m.why_match || '');
+      const jobId = m.id || m.job_id;
+      const matchId = `jm_${userId}_${resumeVersionId}_${jobId}`;
+      const matchScore = Number(m.matchScore ?? m.match_score ?? 0);
+      const similarityScore = Number(m.similarityScore ?? m.similarity_score ?? 0);
+      const skillMatchScore = Number(m.skillMatchScore ?? m.skill_match_score ?? 0);
+      const matchedSkills = m.matchedSkills ?? m.matched_skills ?? [];
+      const missingSkills = m.missingSkills ?? m.missing_skills ?? [];
+      const preferredSkills = m.preferredSkills ?? m.preferred_skills ?? [];
+      const cleanWhy = sanitizePgString(m.recommendationReason ?? m.whyMatch ?? m.why_match ?? '');
+
       await p.query(
         `INSERT INTO job_matches (
           id, user_id, resume_version_id, job_id, match_score, similarity_score, skill_match_score,
@@ -1074,13 +1170,13 @@ export async function dbSaveJobMatches(
           matchId,
           userId,
           resumeVersionId,
-          m.job_id,
-          m.match_score || 0,
-          m.similarity_score || 0,
-          m.skill_match_score || 0,
-          JSON.stringify(sanitizePgJson(m.matched_skills || [])),
-          JSON.stringify(sanitizePgJson(m.missing_skills || [])),
-          JSON.stringify(sanitizePgJson(m.preferred_skills || [])),
+          jobId,
+          matchScore,
+          similarityScore,
+          skillMatchScore,
+          JSON.stringify(sanitizePgJson(matchedSkills)),
+          JSON.stringify(sanitizePgJson(missingSkills)),
+          JSON.stringify(sanitizePgJson(preferredSkills)),
           cleanWhy
         ]
       );
@@ -1136,8 +1232,8 @@ export async function dbGetJobMatchesForResumeVersion(
         j.industry,
         j.source
        FROM job_matches jm
-       LEFT JOIN jobs j ON jm.job_id = j.id
-       WHERE jm.user_id = $1 AND jm.resume_version_id = $2
+       INNER JOIN jobs j ON jm.job_id = j.id
+       WHERE jm.user_id = $1 AND jm.resume_version_id = $2 AND j.is_active = TRUE
        ORDER BY jm.match_score DESC`,
       [userId, resumeVersionId]
     );
@@ -1149,6 +1245,9 @@ export async function dbGetJobMatchesForResumeVersion(
       const missingSkills = Array.isArray(row.missing_skills)
         ? row.missing_skills
         : (typeof row.missing_skills === 'string' ? JSON.parse(row.missing_skills) : []);
+      const preferredSkills = Array.isArray(row.preferred_skills)
+        ? row.preferred_skills
+        : (typeof row.preferred_skills === 'string' ? JSON.parse(row.preferred_skills) : []);
       const tags = Array.isArray(row.tags)
         ? row.tags
         : (typeof row.tags === 'string' ? JSON.parse(row.tags) : []);
@@ -1172,8 +1271,15 @@ export async function dbGetJobMatchesForResumeVersion(
         return null;
       }
 
+      // Compute canonical required skills: union of matched + missing skills (or fallback to jobSkills)
+      const computedRequired = Array.from(new Set([...matchedSkills, ...missingSkills]));
+      const requiredSkills = computedRequired.length > 0
+        ? computedRequired
+        : (jobSkills.length > 0 ? jobSkills : (tags.length > 0 ? tags : matchedSkills));
+
       return {
         id: row.job_id,
+        job_id: row.job_id,
         company: row.company,
         title: row.title,
         location: row.location || '',
@@ -1181,14 +1287,24 @@ export async function dbGetJobMatchesForResumeVersion(
         salary: row.salary || '',
         salaryRange: row.salary || '',
         matchScore: row.match_score,
+        match_score: row.match_score,
         matchConfidence: confidence,
         similarityScore: row.similarity_score,
+        similarity_score: row.similarity_score,
         skillMatchScore: row.skill_match_score,
-        requiredSkills: jobSkills.length > 0 ? jobSkills : matchedSkills,
+        skill_match_score: row.skill_match_score,
+        requiredSkills: requiredSkills,
+        required_skills: requiredSkills,
         matchedSkills: matchedSkills,
+        matched_skills: matchedSkills,
         missingSkills: missingSkills,
-        recommendationReason: row.why_match || 'Strong match based on your skills and experience.',
-        tags: tags.length > 0 ? tags : matchedSkills,
+        missing_skills: missingSkills,
+        preferredSkills: preferredSkills,
+        preferred_skills: preferredSkills,
+        whyMatch: row.why_match || '',
+        why_match: row.why_match || '',
+        recommendationReason: row.why_match || 'Deterministic match based on skills and profile.',
+        tags: tags.length > 0 ? tags : requiredSkills,
         responsibilities,
         requirements,
         experienceRequired: row.experience_required || '',
@@ -1386,31 +1502,145 @@ export async function dbGetUserJobApplications(userId: string): Promise<any[]> {
   }
 }
 
-export async function dbSaveSavedJob(userId: string, jobId: string): Promise<boolean> {
+export async function dbSaveSavedJob(userId: string, jobId: string): Promise<{ success: boolean; saved: boolean; jobId: string; error?: string }> {
   const p = getPool();
-  if (!p || !isPostgresAvailable) return false;
+  if (!p || !isPostgresAvailable) return { success: false, saved: false, jobId, error: 'Database unavailable' };
   try {
+    // 1. Verify job exists in jobs catalog
+    const jobCheck = await p.query(`SELECT id FROM jobs WHERE id = $1`, [jobId]);
+    if (jobCheck.rows.length === 0) {
+      return { success: false, saved: false, jobId, error: 'Job not found in catalog' };
+    }
+
     const id = `sj_${userId}_${jobId}`;
+    await p.query(
+      `INSERT INTO saved_jobs (id, user_id, job_id, saved_at, created_at, updated_at) 
+       VALUES ($1, $2, $3, NOW(), NOW(), NOW()) 
+       ON CONFLICT (user_id, job_id) DO UPDATE SET updated_at = NOW()`,
+      [id, userId, jobId]
+    );
+
+    // Keep legacy table synced
     await p.query(
       `INSERT INTO user_saved_jobs (id, user_id, job_id) VALUES ($1, $2, $3) ON CONFLICT (user_id, job_id) DO NOTHING`,
       [id, userId, jobId]
     );
-    return true;
-  } catch (err) {
+
+    return { success: true, saved: true, jobId };
+  } catch (err: any) {
     console.error('[PostgreSQL] Error in dbSaveSavedJob:', err);
+    return { success: false, saved: false, jobId, error: err.message };
+  }
+}
+
+export async function dbRemoveSavedJob(userId: string, jobId: string): Promise<{ success: boolean; saved: boolean; jobId: string }> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return { success: false, saved: false, jobId };
+  try {
+    await p.query(`DELETE FROM saved_jobs WHERE user_id = $1 AND job_id = $2`, [userId, jobId]);
+    await p.query(`DELETE FROM user_saved_jobs WHERE user_id = $1 AND job_id = $2`, [userId, jobId]);
+    return { success: true, saved: false, jobId };
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbRemoveSavedJob:', err);
+    return { success: false, saved: false, jobId };
+  }
+}
+
+export async function dbIsJobSaved(userId: string, jobId: string): Promise<boolean> {
+  const p = getPool();
+  if (!p || !isPostgresAvailable) return false;
+  try {
+    const res = await p.query(
+      `SELECT 1 FROM saved_jobs WHERE user_id = $1 AND job_id = $2 LIMIT 1`,
+      [userId, jobId]
+    );
+    return res.rows.length > 0;
+  } catch (err) {
+    console.error('[PostgreSQL] Error in dbIsJobSaved:', err);
     return false;
   }
 }
 
-export async function dbRemoveSavedJob(userId: string, jobId: string): Promise<boolean> {
+export async function dbGetSavedJobsForUser(userId: string): Promise<any[]> {
   const p = getPool();
-  if (!p || !isPostgresAvailable) return false;
+  if (!p || !isPostgresAvailable) return [];
   try {
-    await p.query(`DELETE FROM user_saved_jobs WHERE user_id = $1 AND job_id = $2`, [userId, jobId]);
-    return true;
+    const res = await p.query(
+      `SELECT 
+        j.id,
+        j.external_job_id,
+        j.source,
+        j.company,
+        j.title,
+        j.location,
+        j.description,
+        j.url AS apply_url,
+        j.posted_at AS posted_date,
+        j.employment_type AS job_type,
+        j.experience_required,
+        j.salary,
+        j.skills AS job_skills,
+        j.tags,
+        j.responsibilities,
+        j.requirements,
+        j.company_logo,
+        j.company_website,
+        j.industry,
+        j.is_active,
+        sj.saved_at,
+        sj.created_at AS saved_created_at
+       FROM saved_jobs sj
+       INNER JOIN jobs j ON sj.job_id = j.id
+       WHERE sj.user_id = $1
+       ORDER BY sj.saved_at DESC, sj.created_at DESC`,
+      [userId]
+    );
+
+    return res.rows.map(r => {
+      const skills = Array.isArray(r.job_skills) ? r.job_skills : (typeof r.job_skills === 'string' ? JSON.parse(r.job_skills) : []);
+      const tags = Array.isArray(r.tags) ? r.tags : (typeof r.tags === 'string' ? JSON.parse(r.tags) : []);
+      const responsibilities = Array.isArray(r.responsibilities) ? r.responsibilities : (typeof r.responsibilities === 'string' ? JSON.parse(r.responsibilities) : []);
+      const requirements = Array.isArray(r.requirements) ? r.requirements : (typeof r.requirements === 'string' ? JSON.parse(r.requirements) : []);
+
+      return {
+        id: r.id,
+        companyId: r.company?.toLowerCase().replace(/\s+/g, '_') || 'company',
+        title: r.title,
+        company: r.company,
+        companyLogo: r.company_logo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(r.company || 'Company')}`,
+        location: r.location || 'India',
+        matchScore: 85,
+        matchConfidence: 'High' as const,
+        tags: tags.length > 0 ? tags : skills,
+        salary: r.salary || 'Competitive',
+        salaryRange: r.salary || 'Competitive',
+        description: r.description,
+        responsibilities,
+        requirements,
+        benefits: ['Comprehensive Health Insurance', 'Annual Learning Stipend', 'Flexible Remote / Hybrid'],
+        requiredSkills: skills,
+        matchedSkills: skills,
+        missingSkills: [],
+        experienceRequired: r.experience_required || '2+ Years',
+        jobType: r.job_type || 'Full-Time',
+        companyDescription: `${r.company} is hiring software professionals in India.`,
+        postedDate: r.posted_date || 'Recently',
+        recommendationReason: 'Saved job in your career profile.',
+        applyUrl: r.apply_url || '',
+        applicationUrl: r.apply_url || '',
+        companyWebsite: r.company_website || r.apply_url || '',
+        similarityScore: 80,
+        skillMatchScore: 85,
+        source: r.source || 'adzuna',
+        industry: r.industry || '',
+        isSaved: true,
+        isActive: r.is_active !== false,
+        savedAt: r.saved_at || r.saved_created_at
+      };
+    });
   } catch (err) {
-    console.error('[PostgreSQL] Error in dbRemoveSavedJob:', err);
-    return false;
+    console.error('[PostgreSQL] Error in dbGetSavedJobsForUser:', err);
+    return [];
   }
 }
 
@@ -1418,7 +1648,7 @@ export async function dbGetUserSavedJobs(userId: string): Promise<string[]> {
   const p = getPool();
   if (!p || !isPostgresAvailable) return [];
   try {
-    const res = await p.query(`SELECT job_id FROM user_saved_jobs WHERE user_id = $1`, [userId]);
+    const res = await p.query(`SELECT job_id FROM saved_jobs WHERE user_id = $1 ORDER BY saved_at DESC`, [userId]);
     return res.rows.map(r => r.job_id);
   } catch (err) {
     console.error('[PostgreSQL] Error in dbGetUserSavedJobs:', err);

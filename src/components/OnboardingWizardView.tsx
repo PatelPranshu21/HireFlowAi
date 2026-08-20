@@ -96,6 +96,18 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (extension === '.pdf') {
+      alert("Please upload a DOCX file instead of a PDF.");
+      return;
+    }
+    
+    if (extension !== '.docx') {
+      alert("Invalid file format! Please upload a DOCX document.");
+      return;
+    }
+
     setUploadedFileName(file.name);
     setIsUploading(true);
 
@@ -108,7 +120,14 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
         setResumeText(`Extracted text from ${file.name}\n\nExperience: Senior Software Engineer\nSkills: React, TypeScript, Node.js, Cloud Computing`);
       }
       setResumeUploaded(true);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message === 'LIMIT_REACHED' && err.details) {
+        if ((window as any).__showLimitReachedModal) {
+          (window as any).__showLimitReachedModal(err.details);
+        }
+      } else {
+        alert(err.message || "Resume upload error. Please try again.");
+      }
       console.error("Resume upload error:", err);
     } finally {
       setIsUploading(false);
@@ -488,19 +507,19 @@ export const OnboardingWizardView: React.FC<OnboardingWizardViewProps> = ({
                   </p>
                   <label className="inline-block text-xs font-mono text-blue-400 underline cursor-pointer hover:text-blue-300 pt-2">
                     Upload a different file
-                    <input type="file" accept=".pdf,.docx,.txt" onChange={handleFileChange} className="hidden" />
+                    <input type="file" accept=".docx" onChange={handleFileChange} className="hidden" />
                   </label>
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-[#2a2d3d] hover:border-blue-500/50 rounded-2xl p-8 transition-all bg-[#11131c]/50 relative">
                   <Upload className="w-10 h-10 text-blue-400 mx-auto mb-3 animate-bounce" />
                   <h3 className="text-sm font-bold font-geist text-white mb-1">Drag & drop your resume file</h3>
-                  <p className="text-xs font-mono text-[#a1a3b8] mb-4">Supports PDF, DOCX, or TXT up to 10MB</p>
+                  <p className="text-xs font-mono text-[#a1a3b8] mb-4">Supports DOCX up to 10MB</p>
                   
                   <label className="bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer transition-all inline-flex items-center gap-2 shadow-lg shadow-blue-500/20">
                     {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                     Browse Computer
-                    <input type="file" accept=".pdf,.docx,.txt" onChange={handleFileChange} className="hidden" disabled={isUploading} />
+                    <input type="file" accept=".docx" onChange={handleFileChange} className="hidden" disabled={isUploading} />
                   </label>
                 </div>
               )}

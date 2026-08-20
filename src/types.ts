@@ -356,13 +356,19 @@ export interface TaskItem {
 
 export interface JobRecommendation {
   id: string;
+  job_id?: string;
   companyId?: string;
   title: string;
   company: string;
   companyLogo?: string;
   location: string;
   matchScore: number;
-  matchConfidence?: 'Very High' | 'High' | 'Moderate';
+  match_score?: number;
+  matchConfidence?: 'Very High' | 'High' | 'Moderate' | 'Low';
+  similarityScore?: number;
+  similarity_score?: number;
+  skillMatchScore?: number;
+  skill_match_score?: number;
   tags: string[];
   salary?: string;
   salaryRange?: string;
@@ -372,18 +378,30 @@ export interface JobRecommendation {
   benefits?: string[];
   hiringProcess?: string[];
   requiredSkills?: string[];
+  required_skills?: string[];
+  matchedSkills?: string[];
+  matched_skills?: string[];
   missingSkills?: string[];
+  missing_skills?: string[];
+  preferredSkills?: string[];
+  preferred_skills?: string[];
   experienceRequired?: string;
   jobType?: string;
   companyDescription?: string;
   postedDate?: string;
   recommendationReason?: string;
+  whyMatch?: string;
+  why_match?: string;
   applyUrl?: string;
   applicationUrl?: string;
   companyWebsite?: string;
   preparationTips?: string[];
   notes?: string;
   hidden?: boolean;
+  isActive?: boolean;
+  is_active?: boolean;
+  industry?: string;
+  source?: string;
 }
 
 export interface ActivityLog {

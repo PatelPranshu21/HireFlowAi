@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ApplicationCard, JobRecommendation, UserProfile, NotificationItem, JobPreferences, CompanyInfo } from '../types';
 import { CompanyModal } from './CompanyModal';
 import { WhyMatchModal } from './WhyMatchModal';
@@ -7,6 +7,8 @@ import { CompareJobsModal } from './CompareJobsModal';
 import { PreferencesView } from './PreferencesView';
 import { JobAnalyticsView } from './JobAnalyticsView';
 import { ResumeUploadParserModal } from './resume/ResumeUploadParserModal';
+import { UserService } from '../services/userService';
+import { checkEntitlement } from '../data/planConfig';
 
 import { 
   Sparkles, 
@@ -44,7 +46,8 @@ import {
   Heart,
   BarChart2,
   Settings,
-  Upload
+  Upload,
+  Loader2
 } from 'lucide-react';
 
 interface JobSuiteViewProps {
@@ -82,6 +85,17 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   // Modal State for Resume Upload
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
+  const handleOpenUploadModal = () => {
+    const entitlement = checkEntitlement(user, 'resumeUploads');
+    if (!entitlement.allowed) {
+      if ((window as any).__showLimitReachedModal) {
+        (window as any).__showLimitReachedModal(entitlement);
+        return;
+      }
+    }
+    setIsUploadModalOpen(true);
+  };
+
   // Check if a resume exists and has been analyzed
   const hasResume = useMemo(() => {
     return !!(
@@ -98,8 +112,28 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
   const [jobTypeFilter, setJobTypeFilter] = useState('all');
   const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
 
-  // Saved Jobs State
+  // Saved Jobs State (Hydrated from PostgreSQL)
+  const [savedJobsList, setSavedJobsList] = useState<JobRecommendation[]>([]);
   const [savedJobIds, setSavedJobIds] = useState<string[]>(user?.savedJobIds || []);
+  const [isSavingJob, setIsSavingJob] = useState<Record<string, boolean>>({});
+
+  // Hydrate saved jobs from backend API on mount & user change
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSaved = async () => {
+      try {
+        const jobs = await UserService.getSavedJobsApi();
+        if (isMounted && Array.isArray(jobs)) {
+          setSavedJobsList(jobs);
+          setSavedJobIds(jobs.map((j: any) => j.id));
+        }
+      } catch (err) {
+        console.error('Error fetching saved jobs:', err);
+      }
+    };
+    fetchSaved();
+    return () => { isMounted = false; };
+  }, [user?.id]);
 
   // Hidden Jobs State
   const [hiddenJobIds, setHiddenJobIds] = useState<string[]>(user?.hiddenJobIds || []);
@@ -166,10 +200,13 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
 
   const activeResumeName = activeResumeVersion?.fileName || activeResumeVersion?.versionName || (hasResume ? 'Active Resume' : 'No Resume Uploaded');
 
-  // Saved Jobs List
+  // Saved Jobs List: User-level data that survives resume switching and reload
   const savedJobs = useMemo(() => {
+    if (savedJobsList.length > 0) {
+      return savedJobsList;
+    }
     return allJobs.filter(j => savedJobIds.includes(j.id));
-  }, [allJobs, savedJobIds]);
+  }, [savedJobsList, allJobs, savedJobIds]);
 
   // Filtered Recommended Jobs
   const filteredRecommendedJobs = useMemo(() => {
@@ -202,14 +239,40 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
     });
   }, [allJobs, hiddenJobIds, searchQuery, experienceFilter, remoteFilter, jobTypeFilter]);
 
-  // Handlers
-  const handleToggleSaveJob = (job: JobRecommendation) => {
-    if (savedJobIds.includes(job.id)) {
-      setSavedJobIds(prev => prev.filter(id => id !== job.id));
-      showToast(`Removed "${job.title}" from Saved Jobs.`);
-    } else {
-      setSavedJobIds(prev => [...prev, job.id]);
-      showToast(`Saved "${job.title}" to Saved Jobs! ❤️`);
+  // Handlers - Authenticated Backend Persistence
+  const handleToggleSaveJob = async (job: JobRecommendation) => {
+    const isCurrentlySaved = savedJobIds.includes(job.id);
+    setIsSavingJob(prev => ({ ...prev, [job.id]: true }));
+
+    try {
+      if (isCurrentlySaved) {
+        const ok = await UserService.unsaveJobApi(job.id);
+        if (ok) {
+          setSavedJobIds(prev => prev.filter(id => id !== job.id));
+          setSavedJobsList(prev => prev.filter(j => j.id !== job.id));
+          showToast(`Removed "${job.title}" from Saved Jobs.`);
+        } else {
+          showToast(`Failed to remove "${job.title}". Please try again.`);
+        }
+      } else {
+        const ok = await UserService.saveJobApi(job.id);
+        if (ok) {
+          const jobWithSaved = { ...job, isSaved: true, isActive: (job as any).isActive !== false };
+          setSavedJobIds(prev => (prev.includes(job.id) ? prev : [...prev, job.id]));
+          setSavedJobsList(prev => {
+            const filtered = prev.filter(j => j.id !== job.id);
+            return [jobWithSaved, ...filtered];
+          });
+          showToast(`Saved "${job.title}" to Saved Jobs! ❤️`);
+        } else {
+          showToast(`Failed to save "${job.title}". Please try again.`);
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling saved job:', err);
+      showToast('Error updating saved job. Please check connection.');
+    } finally {
+      setIsSavingJob(prev => ({ ...prev, [job.id]: false }));
     }
   };
 
@@ -255,9 +318,13 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
       showToast(`Opened careers page for ${job.company}.`);
     }
 
-    // Open official company career site safely in new tab
-    const url = job.applicationUrl || job.applyUrl || job.companyWebsite || `https://www.google.com/search?q=${encodeURIComponent(job.company + ' careers ' + job.title)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Open official job application site safely in new tab using Adzuna redirect_url
+    const url = job.applicationUrl || job.applyUrl || (job as any).url;
+    if (url && url !== '#' && !url.startsWith('javascript:')) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      showToast(`Direct application URL unavailable for ${job.company}.`);
+    }
   };
 
   const handleOpenCompanyByName = (companyName: string) => {
@@ -491,7 +558,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                       if (onNavigateTab) {
                         onNavigateTab('resume-suite');
                       } else {
-                        setIsUploadModalOpen(true);
+                        handleOpenUploadModal();
                       }
                     }}
                     className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer shadow-lg flex items-center gap-2"
@@ -718,7 +785,7 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                           if (onNavigateTab) {
                             onNavigateTab('resume-suite');
                           } else {
-                            setIsUploadModalOpen(true);
+                            handleOpenUploadModal();
                           }
                         }}
                         className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-5 py-2.5 rounded-xl cursor-pointer inline-flex items-center gap-2"
@@ -732,6 +799,8 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                     {filteredRecommendedJobs.map((job) => {
                   const isSaved = savedJobIds.includes(job.id);
                   const isApplied = applications.some(a => a.jobId === job.id || (a.company === job.company && a.jobTitle === job.title));
+                  const applyLink = job.applicationUrl || job.applyUrl || (job as any).url;
+                  const hasValidUrl = !!applyLink && applyLink !== '#' && !applyLink.startsWith('javascript:');
 
                   return (
                     <div 
@@ -862,24 +931,39 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleToggleSaveJob(job)}
+                            disabled={isSavingJob[job.id]}
                             className={`p-2 rounded-xl border transition-colors cursor-pointer ${
                               isSaved ? 'bg-[#571bc1]/20 border-[#571bc1] text-[#d0bcff]' : 'bg-[#11131c] border-[#434656]/40 text-[#a1a3b8] hover:text-white'
                             }`}
                             title={isSaved ? "Remove from Saved" : "Save Job"}
                           >
-                            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-[#d0bcff]' : ''}`} />
+                            {isSavingJob[job.id] ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-[#d0bcff]" />
+                            ) : (
+                              <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-[#d0bcff]' : ''}`} />
+                            )}
                           </button>
 
-                          <button
-                            onClick={() => handleApplyToJob(job)}
-                            className={`text-xs font-mono font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
-                              isApplied
-                                ? 'bg-[#212433] text-[#4cd7f6] border border-[#0052ff]/40'
-                                : 'bg-[#0052ff] hover:bg-[#0052ff]/90 text-white shadow-md'
-                            }`}
-                          >
-                            {isApplied ? 'Applied' : 'Apply Now'} <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          {hasValidUrl ? (
+                            <button
+                              onClick={() => handleApplyToJob(job)}
+                              className={`text-xs font-mono font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                                isApplied
+                                  ? 'bg-[#212433] text-[#4cd7f6] border border-[#0052ff]/40'
+                                  : 'bg-[#0052ff] hover:bg-[#0052ff]/90 text-white shadow-md'
+                              }`}
+                            >
+                              {isApplied ? 'Applied' : 'Apply Now'} <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="text-xs font-mono font-medium px-4 py-2 rounded-xl flex items-center gap-1.5 bg-[#212433]/40 text-[#717388] border border-[#434656]/30 cursor-not-allowed"
+                              title="Direct application link not available"
+                            >
+                              Unavailable
+                            </button>
+                          )}
                         </div>
 
                       </div>
@@ -930,9 +1014,12 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {savedJobs.map((job) => {
                   const currentNote = jobNotes[job.id] || '';
+                  const isJobActive = (job as any).isActive !== false && (job as any).is_active !== false;
 
                   return (
-                    <div key={job.id} className="bg-[#191b25] border border-[#434656]/30 rounded-2xl p-6 space-y-4 flex flex-col justify-between">
+                    <div key={job.id} className={`bg-[#191b25] border rounded-2xl p-6 space-y-4 flex flex-col justify-between transition-all ${
+                      isJobActive ? 'border-[#434656]/30' : 'border-amber-500/30 bg-[#191b25]/80'
+                    }`}>
                       <div>
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-center gap-3">
@@ -952,12 +1039,19 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                               </div>
                             )}
                             <div>
-                              <button
-                                onClick={() => handleOpenCompanyByName(job.company)}
-                                className="text-xs font-mono font-bold text-[#a1a3b8] hover:text-[#4cd7f6] cursor-pointer"
-                              >
-                                {job.company}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenCompanyByName(job.company)}
+                                  className="text-xs font-mono font-bold text-[#a1a3b8] hover:text-[#4cd7f6] cursor-pointer"
+                                >
+                                  {job.company}
+                                </button>
+                                {!isJobActive && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                                    No Longer Active
+                                  </span>
+                                )}
+                              </div>
                               <h3 
                                 onClick={() => setSelectedJobDetails(job)}
                                 className="text-base font-bold font-geist text-white hover:text-[#4cd7f6] cursor-pointer"
@@ -1010,12 +1104,38 @@ export const JobSuiteView: React.FC<JobSuiteViewProps> = ({
                           >
                             View Job
                           </button>
-                          <button
-                            onClick={() => handleApplyToJob(job)}
-                            className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-4 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer"
-                          >
-                            Apply <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          {(() => {
+                            const isJobActive = (job as any).isActive !== false && (job as any).is_active !== false;
+                            const applyLink = job.applicationUrl || job.applyUrl || (job as any).url;
+                            const hasValidUrl = !!applyLink && applyLink !== '#' && !applyLink.startsWith('javascript:');
+                            if (!isJobActive) {
+                              return (
+                                <button
+                                  disabled
+                                  className="bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-mono px-3 py-1.5 rounded-xl cursor-not-allowed"
+                                  title="This job listing is no longer active"
+                                >
+                                  Job Closed
+                                </button>
+                              );
+                            }
+                            return hasValidUrl ? (
+                              <button
+                                onClick={() => handleApplyToJob(job)}
+                                className="bg-[#0052ff] hover:bg-[#0052ff]/90 text-white text-xs font-mono font-bold px-4 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer"
+                              >
+                                Apply <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                disabled
+                                className="bg-[#212433]/40 text-[#717388] border border-[#434656]/30 text-xs font-mono px-3 py-1.5 rounded-xl cursor-not-allowed"
+                                title="Direct application link not available"
+                              >
+                                Unavailable
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
 

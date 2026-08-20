@@ -2,6 +2,8 @@ import { CANONICAL_SKILLS } from '../src/services/jobMatchingService';
 
 // Helper function to analyze resume text dynamically and deterministically with 100% evidence-based keyword provenance
 export function analyzeResumeContentLocally(resumeText: string, targetRole: string = "Software Engineer") {
+  const tStart = performance.now();
+
   if (!resumeText || resumeText.trim().length < 20) {
     return {
       overallScore: 0,
@@ -24,13 +26,21 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
       impactPoints: ["Upload a resume with selectable text to generate machine-readability audit and keyword optimizations."],
       grammarIssues: [],
       extractedText: resumeText || '',
-      text: resumeText || ''
+      text: resumeText || '',
+      timing: {
+        keywordAnalysis: 0,
+        atsAnalysis: 0,
+        sectionAnalysis: 0,
+        improvementAnalysis: 0,
+        totalLocalAnalysis: 0
+      }
     };
   }
 
   const textLower = resumeText.toLowerCase();
 
   // 1. Evidence-Based Keyword Detection & Provenance
+  const tKeywordStart = performance.now();
   const detectedKeywords: any[] = [];
   const missingKeywords: any[] = [];
 
@@ -94,12 +104,16 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
     ...missingKeywords.slice(0, 8)
   ];
 
+  const tKeywords = performance.now() - tKeywordStart;
+
   // 2. Metrics & Action Verbs
+  const tAtsStart = performance.now();
   const numberMatches = (resumeText.match(/(\d+%\s*|\$\s*\d+|\b\d+\s*ms\b|\b\d+\s*k\b|\b\d+\s*m\b|\b\d+\s*users?\b|\b\d+\s*x\b|\b\d+\+\b)/gi) || []).length;
   const actionVerbs = ["engineered", "architected", "spearheaded", "optimized", "developed", "built", "implemented", "scaled", "led", "designed", "reduced", "increased", "orchestrated", "streamlined", "automated", "delivered"];
   const detectedVerbs = actionVerbs.filter(v => textLower.includes(v));
 
   // 3. Section Detection
+  const tSectionStart = performance.now();
   const hasSummary = textLower.includes("summary") || textLower.includes("profile") || textLower.includes("objective") || textLower.includes("about me");
   const hasExperience = textLower.includes("experience") || textLower.includes("employment") || textLower.includes("work history") || textLower.includes("career history");
   const hasEducation = textLower.includes("education") || textLower.includes("degree") || textLower.includes("university") || textLower.includes("college") || textLower.includes("bachelor") || textLower.includes("master");
@@ -122,6 +136,7 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
   const relevanceScore = Math.min(99, Math.max(40, Math.round(50 + (detectedKeywords.length * 3))));
 
   const topSkillsFound = detectedKeywords.map(k => k.keyword).slice(0, 6).join(", ") || "General Skills";
+  const tAts = performance.now() - tAtsStart;
 
   // 5. Section Analyses (6 Core Sections)
   const sectionAnalyses = [
@@ -201,8 +216,10 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
       estimatedAtsGain: hasCertifications ? 2 : 3
     }
   ];
+  const tSections = performance.now() - tSectionStart;
 
   // 6. Dynamic AI Improvements (aiSuggestions)
+  const tImprovementStart = performance.now();
   const bulletLines = resumeText.split(/\n/).filter(line => {
     const trimmed = line.trim();
     return trimmed.length > 20 && (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*') || /^[A-Z][a-z]/.test(trimmed));
@@ -262,6 +279,8 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
     });
   }
 
+  const tImprovements = performance.now() - tImprovementStart;
+
   // 7. Category Scores (10 categories)
   const categoryScores = [
     { category: 'Formatting' as const, score: formattingScore, explanation: `Clear structural separation with ${detectedSectionsCount} of 6 standard resume sections identified.`, tip: 'Maintain consistent line spacing and section headers.' },
@@ -275,6 +294,8 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
     { category: 'Structure' as const, score: Math.min(95, 60 + (detectedSectionsCount * 5)), explanation: `Identified ${detectedSectionsCount} structured sections.`, tip: 'Maintain consistent section header formatting.' },
     { category: 'Impact' as const, score: impactScore, explanation: `Found ${numberMatches} quantified metric points and ${detectedVerbs.length} action verbs.`, tip: 'Include specific numbers (%, $, ms, users) in every experience bullet.' }
   ];
+
+  const tTotalLocal = performance.now() - tStart;
 
   return {
     overallScore,
@@ -304,6 +325,13 @@ export function analyzeResumeContentLocally(resumeText: string, targetRole: stri
       `${!hasSummary ? 'Add a Professional Summary section at the top.' : 'Professional summary detected.'}`
     ],
     extractedText: resumeText,
-    text: resumeText
+    text: resumeText,
+    timing: {
+      keywordAnalysis: tKeywords,
+      atsAnalysis: tAts,
+      sectionAnalysis: tSections,
+      improvementAnalysis: tImprovements,
+      totalLocalAnalysis: tTotalLocal
+    }
   };
 }

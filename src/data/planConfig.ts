@@ -1,7 +1,7 @@
 import { UserProfile, UsageLimits } from '../types';
 
 export type PlanName = '3-Day Free Trial' | 'Basic' | 'Pro' | 'Premium';
-export type FeatureKey = 'atsAnalyses' | 'coverLetterGenerations' | 'mockInterviews' | 'jobMatchAnalyses' | 'bulletRewrites';
+export type FeatureKey = 'atsAnalyses' | 'coverLetterGenerations' | 'mockInterviews' | 'jobMatchAnalyses' | 'bulletRewrites' | 'resumeUploads' | 'savedJobs';
 
 export interface PlanEntitlements {
   name: PlanName;
@@ -16,8 +16,22 @@ export interface PlanEntitlements {
     mockInterviews: number;
     jobMatchAnalyses: number;
     bulletRewrites: number;
+    resumeUploads: number;
+    savedJobs: number;
   };
   features: string[];
+}
+
+export function isDevSubscriptionDisabled(): boolean {
+  try {
+    if (typeof process !== 'undefined' && (process.env?.DISABLE_SUBSCRIPTION_FOR_DEV === 'true' || process.env?.VITE_DISABLE_SUBSCRIPTION_FOR_DEV === 'true')) {
+      return true;
+    }
+    if (typeof window !== 'undefined' && ((window as any).__DISABLE_SUBSCRIPTION_FOR_DEV === true || (window as any).VITE_DISABLE_SUBSCRIPTION_FOR_DEV === 'true')) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
 }
 
 export const FEATURE_NAMES: Record<FeatureKey, string> = {
@@ -25,7 +39,9 @@ export const FEATURE_NAMES: Record<FeatureKey, string> = {
   coverLetterGenerations: 'AI Cover Letter Generations',
   mockInterviews: 'AI Mock Interview Prep Sessions',
   jobMatchAnalyses: 'Job Description Match Analyses',
-  bulletRewrites: '1-Click AI Bullet Rewrites'
+  bulletRewrites: '1-Click AI Bullet Rewrites',
+  resumeUploads: 'Resume Uploads / Versions Allowed',
+  savedJobs: 'Saved Jobs'
 };
 
 export const PLANS: Record<PlanName, PlanEntitlements> = {
@@ -38,15 +54,23 @@ export const PLANS: Record<PlanName, PlanEntitlements> = {
     limits: {
       atsAnalyses: 3,
       coverLetterGenerations: 3,
-      mockInterviews: 0,
+      mockInterviews: 5,
       jobMatchAnalyses: 5,
-      bulletRewrites: 5
+      bulletRewrites: 5,
+      resumeUploads: 1,
+      savedJobs: 10
     },
     features: [
-      'Full ATS Resume Scoring',
-      'Maximum 3 AI Cover Letter Generations',
-      'AI Job Recommendation Engine',
-      'Preserves all saved user data after expiration'
+      '3 Resume Scans / month',
+      '3 ATS Score Analyses / month',
+      '5 AI Interview Questions / month',
+      '3 Cover Letter Generations / month',
+      '5 Job Match Analyses / month',
+      'Basic Preview Career Roadmap',
+      'Limited AI Career Coach',
+      '1 Resume Version Allowed',
+      '10 Saved Jobs Limit',
+      'Community Support'
     ]
   },
   'Basic': {
@@ -57,15 +81,22 @@ export const PLANS: Record<PlanName, PlanEntitlements> = {
     limits: {
       atsAnalyses: 10,
       coverLetterGenerations: 10,
-      mockInterviews: 0,
-      jobMatchAnalyses: -1,
-      bulletRewrites: -1
+      mockInterviews: 5,
+      jobMatchAnalyses: 15,
+      bulletRewrites: 15,
+      resumeUploads: 3,
+      savedJobs: 25
     },
     features: [
-      '10 ATS Resume Audits / mo',
-      '10 AI Cover Letters / mo',
-      '1-Click AI Bullet Rewriter',
-      'Job Matcher & Keyword Gap Finder',
+      '10 Resume Scans / month',
+      '10 ATS Score Analyses / month',
+      '5 AI Interview Sessions / month',
+      '10 Cover Letter Generations / month',
+      '15 Job Match Analyses / month',
+      'Standard Career Roadmap',
+      'Standard AI Career Coach',
+      '3 Resume Versions Allowed',
+      '25 Saved Jobs Limit',
       'Email Support'
     ]
   },
@@ -76,19 +107,24 @@ export const PLANS: Record<PlanName, PlanEntitlements> = {
     description: 'Complete career acceleration suite for tech professionals targeting top roles.',
     popular: true,
     limits: {
-      atsAnalyses: -1,
-      coverLetterGenerations: -1,
+      atsAnalyses: 100,
+      coverLetterGenerations: 100,
       mockInterviews: 30,
-      jobMatchAnalyses: -1,
-      bulletRewrites: -1
+      jobMatchAnalyses: 100,
+      bulletRewrites: 100,
+      resumeUploads: 10,
+      savedJobs: 100
     },
     features: [
-      'Unlimited ATS Resume Audits',
-      'Unlimited Bullet Rewriting & Impact Metrics',
-      'Unlimited Job Description Matching',
-      'Unlimited AI Cover Letter Studio',
-      '30 AI Mock Interview Prep Sessions / mo',
-      'STAR Framework Detailed Scoring',
+      '100 Resume Scans / month (Unlimited)',
+      '100 ATS Score Analyses / month (Unlimited)',
+      '30 AI Interview Sessions / month',
+      '100 Cover Letter Generations / month (Unlimited)',
+      '100 Job Match Analyses / month (Unlimited)',
+      'Full Adaptive Career Roadmap',
+      '24/7 Priority AI Career Coach',
+      '10 Resume Versions Allowed',
+      '100 Saved Jobs Limit',
       'Priority 24/7 Support'
     ]
   },
@@ -102,14 +138,21 @@ export const PLANS: Record<PlanName, PlanEntitlements> = {
       coverLetterGenerations: -1,
       mockInterviews: -1,
       jobMatchAnalyses: -1,
-      bulletRewrites: -1
+      bulletRewrites: -1,
+      resumeUploads: -1,
+      savedJobs: -1
     },
     features: [
-      'Everything in Pro Plan',
-      'Unlimited AI Mock Interview Coach',
-      'LinkedIn Headline & Strategy Suite',
-      'Salary Negotiation Counteroffer Scripts',
-      'Dedicated AI Career Coach Assistant'
+      'Unlimited Resume Scans / month',
+      'Unlimited ATS Score Analyses / month',
+      'Unlimited AI Interview Sessions / month',
+      'Unlimited Cover Letter Generations / month',
+      'Unlimited Job Match Analyses / month',
+      'Executive Strategy Career Roadmap',
+      'Dedicated 1-on-1 AI Career Coach',
+      'Unlimited Resume Versions Allowed',
+      'Unlimited Saved Jobs Limit',
+      'Dedicated Manager Support'
     ]
   }
 };
@@ -149,7 +192,7 @@ export function normalizeProfileSubscription(profile: UserProfile): {
   const planDef = PLANS[planName];
 
   // 2. Check 3-Day Free Trial Expiration
-  if (planName === '3-Day Free Trial' || updatedProfile.subscriptionStatus === 'trialing') {
+  if (planName === '3-Day Free Trial' || updatedProfile.subscriptionStatus === 'trialing' || updatedProfile.subscriptionStatus === 'expired') {
     let trialExpiryMs = 0;
     if (updatedProfile.trialExpiryDate) {
       trialExpiryMs = new Date(updatedProfile.trialExpiryDate).getTime();
@@ -169,16 +212,16 @@ export function normalizeProfileSubscription(profile: UserProfile): {
     }
 
     if (nowMs >= trialExpiryMs) {
-      if (updatedProfile.subscriptionStatus !== 'expired') {
+      if (isDevSubscriptionDisabled()) {
+        updatedProfile.subscriptionStatus = 'trialing';
+      } else if (updatedProfile.subscriptionStatus !== 'expired') {
         updatedProfile.subscriptionStatus = 'expired';
         updatedProfile.tier = '3-Day Free Trial';
         isModified = true;
       }
-    } else {
-      if (updatedProfile.subscriptionStatus !== 'trialing') {
-        updatedProfile.subscriptionStatus = 'trialing';
-        isModified = true;
-      }
+    } else if (updatedProfile.subscriptionStatus !== 'trialing' && updatedProfile.subscriptionStatus !== 'expired') {
+      updatedProfile.subscriptionStatus = 'trialing';
+      isModified = true;
     }
   }
 
@@ -246,10 +289,25 @@ export function checkEntitlement(
   profile: UserProfile,
   feature: FeatureKey
 ): EntitlementCheckResult {
+  const isDevDisabled = isDevSubscriptionDisabled();
+
+  const featureName = FEATURE_NAMES[feature] || feature;
+
+  if (isDevDisabled) {
+    return {
+      allowed: true,
+      feature,
+      featureName,
+      used: 0,
+      max: -1,
+      planName: 'Pro',
+      message: 'Subscription bypassed for development testing.'
+    };
+  }
+
   const { profile: normProfile } = normalizeProfileSubscription(profile);
   const planName = (normProfile.subscriptionPlan as PlanName) || '3-Day Free Trial';
   const planDef = PLANS[planName] || PLANS['3-Day Free Trial'];
-  const featureName = FEATURE_NAMES[feature] || feature;
 
   // 1. Check if trial is expired
   if (normProfile.subscriptionStatus === 'expired') {
@@ -258,7 +316,7 @@ export function checkEntitlement(
       reason: 'trial_expired',
       feature,
       featureName,
-      used: normProfile.usageLimits?.[feature === 'mockInterviews' ? 'aiInterviews' : feature]?.used || 0,
+      used: normProfile.usageLimits?.[feature === 'mockInterviews' ? 'aiInterviews' : (feature === 'resumeUploads' ? 'resumeScans' : feature)]?.used || 0,
       max: planDef.limits[feature],
       planName,
       message: 'Your 3-Day Free Trial has expired. Your saved profile, resume data, and history remain safely preserved. Please upgrade your plan to continue using AI tools.'
@@ -282,6 +340,77 @@ export function checkEntitlement(
     };
   }
 
+  // Check specific feature limits:
+  // A. Resume Versions Allowed (resumeUploads)
+  if (feature === 'resumeUploads') {
+    const versionCount = normProfile.resumeVersions?.length || 0;
+    const scanCount = normProfile.usageLimits?.resumeScans?.used || normProfile.usageLimits?.atsAnalyses?.used || 0;
+
+    // Check version limit
+    if (maxAllowed !== -1 && versionCount >= maxAllowed) {
+      return {
+        allowed: false,
+        reason: 'limit_reached',
+        feature,
+        featureName,
+        used: versionCount,
+        max: maxAllowed,
+        planName,
+        message: `You've reached the limit of ${maxAllowed} resume version${maxAllowed > 1 ? 's' : ''} allowed on your ${planName} plan. Upgrade to add more versions or delete an older version.`
+      };
+    }
+
+    // Check monthly scan limit
+    if (planDef.limits.atsAnalyses !== -1 && scanCount >= planDef.limits.atsAnalyses) {
+      return {
+        allowed: false,
+        reason: 'limit_reached',
+        feature: 'atsAnalyses',
+        featureName: 'Resume Scans / ATS Analyses',
+        used: scanCount,
+        max: planDef.limits.atsAnalyses,
+        planName,
+        message: `You've used all ${planDef.limits.atsAnalyses} Resume Scans / ATS Analyses included in your ${planName} plan this billing month.`
+      };
+    }
+
+    return {
+      allowed: true,
+      feature,
+      featureName,
+      used: versionCount,
+      max: maxAllowed,
+      planName,
+      message: `${maxAllowed === -1 ? 'Unlimited' : maxAllowed - versionCount} resume version${maxAllowed === 1 ? '' : 's'} available.`
+    };
+  }
+
+  // B. Saved Jobs Limit
+  if (feature === 'savedJobs') {
+    const savedCount = normProfile.savedJobIds?.length || 0;
+    if (maxAllowed !== -1 && savedCount >= maxAllowed) {
+      return {
+        allowed: false,
+        reason: 'limit_reached',
+        feature,
+        featureName,
+        used: savedCount,
+        max: maxAllowed,
+        planName,
+        message: `You've reached the maximum limit of ${maxAllowed} saved jobs on your ${planName} plan. Upgrade to save more jobs.`
+      };
+    }
+    return {
+      allowed: true,
+      feature,
+      featureName,
+      used: savedCount,
+      max: maxAllowed,
+      planName,
+      message: `${maxAllowed === -1 ? 'Unlimited' : maxAllowed - savedCount} saved jobs remaining.`
+    };
+  }
+
   // Unlimited feature (limit = -1)
   if (maxAllowed === -1) {
     return {
@@ -295,7 +424,7 @@ export function checkEntitlement(
     };
   }
 
-  // Quota limited feature
+  // Quota limited monthly feature
   const usageKey = feature === 'mockInterviews' ? 'aiInterviews' : feature;
   const currentUsed = normProfile.usageLimits?.[usageKey]?.used || 0;
 

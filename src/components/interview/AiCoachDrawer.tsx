@@ -69,7 +69,7 @@ export const AiCoachDrawer: React.FC<AiCoachDrawerProps> = ({ isOpen, onClose, a
             } : null,
             activeSession: activeSession ? {
               title: activeSession.title || activeSession.role || profile?.targetRole || 'Software Engineer',
-              company: activeSession.company || 'Tech Company',
+              company: activeSession.company || 'Target Employer',
               interviewType: activeSession.type || activeSession.interviewType || 'Technical & Behavioral',
               score: activeSession.score || 0
             } : null,

@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { extractTextFromPayload, parseResumeDocument, sanitizePgJson } from './documentParser';
 import { analyzeResumeContentLocally } from './resumeAnalyzer';
+import { checkEntitlement, normalizeProfileSubscription } from '../src/data/planConfig';
+import { UserProfile } from '../src/types';
 import {
   initDb,
   dbFindUserByEmail,
@@ -163,6 +165,10 @@ function formatAuthUserResponse(record: DbUserRecord) {
   const profile = { ...(record.profile_data || {}) };
   profile.id = record.id;
   profile.email = record.email;
+  profile.subscriptionPlan = (record as any).subscription_plan || profile.subscriptionPlan || '3-Day Free Trial';
+  profile.subscriptionStatus = (record as any).subscription_status || profile.subscriptionStatus || 'trialing';
+  profile.trialStartDate = (record as any).trial_start_date || profile.trialStartDate;
+  profile.trialExpiryDate = (record as any).trial_expiry_date || profile.trialExpiryDate;
 
   if (!fullName && profile.name && profile.name !== 'Candidate') {
     fullName = profile.name.trim();
@@ -180,6 +186,8 @@ function formatAuthUserResponse(record: DbUserRecord) {
   const onboardingCompleted = Boolean(record.onboarding_completed);
   profile.hasCompletedOnboarding = onboardingCompleted;
 
+  const { profile: normProfile } = normalizeProfileSubscription(profile);
+
   return {
     id: record.id,
     email: record.email,
@@ -187,7 +195,7 @@ function formatAuthUserResponse(record: DbUserRecord) {
     lastName: derivedLastName,
     authProvider: record.auth_provider,
     onboardingCompleted,
-    profile
+    profile: normProfile
   };
 }
 
@@ -446,10 +454,16 @@ router.put('/profile', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const mergedProfile = {
+    const rawMerged = {
       ...(userRecord.profile_data || {}),
-      ...profileUpdates
+      ...profileUpdates,
+      subscriptionPlan: profileUpdates.subscriptionPlan || profileUpdates.subscription_plan || (userRecord as any).subscription_plan || (userRecord.profile_data as any)?.subscriptionPlan || '3-Day Free Trial',
+      subscriptionStatus: profileUpdates.subscriptionStatus || profileUpdates.subscription_status || (userRecord as any).subscription_status || (userRecord.profile_data as any)?.subscriptionStatus || 'trialing',
+      trialStartDate: profileUpdates.trialStartDate || profileUpdates.trial_start_date || (userRecord as any).trial_start_date || (userRecord.profile_data as any)?.trialStartDate,
+      trialExpiryDate: profileUpdates.trialExpiryDate || profileUpdates.trial_expiry_date || (userRecord as any).trial_expiry_date || (userRecord.profile_data as any)?.trialExpiryDate
     };
+
+    const { profile: mergedProfile } = normalizeProfileSubscription(rawMerged);
 
     let updatedRecord: DbUserRecord | null = null;
     if (isDbConnected()) {
@@ -872,7 +886,40 @@ router.post('/resume', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'fileName and fileText/fileData required' });
     }
 
+    const dbUser = await dbFindUserById(userId);
+    if (!dbUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const dbProfile = (dbUser.profile_data || {}) as any;
+    const profile: UserProfile = {
+      ...dbProfile,
+      id: dbUser.id,
+      email: dbUser.email,
+      name: (dbUser as any).name || dbUser.first_name || dbUser.email,
+      subscriptionPlan: (dbUser as any).subscription_plan || dbProfile.subscriptionPlan || '3-Day Free Trial',
+      subscriptionStatus: (dbUser as any).subscription_status || dbProfile.subscriptionStatus || 'trialing',
+      trialStartDate: (dbUser as any).trial_start_date || dbProfile.trialStartDate,
+      trialExpiryDate: (dbUser as any).trial_expiry_date || dbProfile.trialExpiryDate,
+      resumeVersions: (dbUser as any).resumeVersions || dbProfile.resumeVersions || [],
+      usageLimits: dbProfile.usageLimits || {}
+    };
+
+    const entitlement = checkEntitlement(profile, 'resumeUploads');
+    if (!entitlement.allowed) {
+      return res.status(403).json({
+        error: 'limit_reached',
+        reason: entitlement.reason,
+        details: entitlement
+      });
+    }
+
+    const tTotalStart = performance.now();
+
+    const tExtStart = performance.now();
     const docParse = await parseResumeDocument({ fileText, fileData, fileName });
+    const tExtraction = performance.now() - tExtStart;
+
     const cleanText = docParse.text;
     const cleanParsedData = sanitizePgJson(parsedData || {});
     let cleanAnalysis = analysisData ? sanitizePgJson(analysisData) : null;
@@ -885,6 +932,7 @@ router.post('/resume', async (req: Request, res: Response) => {
 
     const effectiveScore = cleanAnalysis?.overallScore || Number(score) || 0;
 
+    const tDbStart = performance.now();
     const savedResume = await dbSaveResume(userId, {
       file_name: fileName || 'Resume.pdf',
       resume_text: cleanText,
@@ -909,12 +957,16 @@ router.post('/resume', async (req: Request, res: Response) => {
     if (savedVersion?.id && cleanAnalysis) {
       await dbUpdateResumeVersionScore(savedVersion.id, effectiveScore, cleanAnalysis);
     }
+    const tDb1 = performance.now() - tDbStart;
 
     // Compute deterministic job matches for this version using real PostgreSQL jobs
+    const tMatchStart = performance.now();
     const versionSkills = cleanParsedData?.skills || cleanAnalysis?.keywordList?.filter((k: any) => k.detected && k.foundInResume).map((k: any) => k.keyword) || [];
     const availableJobs = await JobIngestionService.getAvailableJobs();
     const jobMatches = JobMatchingService.matchResumeAgainstJobs(cleanText, versionSkills, availableJobs);
+    const tMatching = performance.now() - tMatchStart;
 
+    const tDbStart2 = performance.now();
     if (savedVersion?.id) {
       const dbMatches = jobMatches.map(m => ({
         resume_version_id: savedVersion.id,
@@ -922,10 +974,10 @@ router.post('/resume', async (req: Request, res: Response) => {
         match_score: m.matchScore,
         similarity_score: (m as any).similarityScore || 0,
         skill_match_score: (m as any).skillMatchScore || 0,
-        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
-        missing_skills: m.missingSkills || [],
-        preferred_skills: [],
-        why_match: m.recommendationReason
+        matched_skills: (m as any).matchedSkills || [],
+        missing_skills: (m as any).missingSkills || [],
+        preferred_skills: (m as any).preferredSkills || [],
+        why_match: m.recommendationReason || (m as any).whyMatch || ''
       }));
       await dbSaveJobMatches(userId, savedVersion.id, dbMatches);
     }
@@ -950,16 +1002,48 @@ router.post('/resume', async (req: Request, res: Response) => {
         analysisData: cleanAnalysis
       };
       const updatedVersions = [newVer, ...existingVersions.filter((v: any) => v.id !== newVer.id)];
+      const currentUsage = existingProfile.usageLimits || {};
       const updatedProfile = {
         ...existingProfile,
         resumeText: cleanText,
         primaryResumeText: cleanText,
         activeResumeVersionId: newVer.id,
         resumeVersions: updatedVersions,
-        atsScore: effectiveScore || existingProfile.atsScore || 0
+        atsScore: effectiveScore || existingProfile.atsScore || 0,
+        usageLimits: {
+          ...currentUsage,
+          resumeScans: {
+            used: (currentUsage.resumeScans?.used || 0) + 1,
+            max: currentUsage.resumeScans?.max || 3
+          },
+          atsAnalyses: {
+            used: (currentUsage.atsAnalyses?.used || 0) + 1,
+            max: currentUsage.atsAnalyses?.max || 3
+          }
+        }
       };
+
       await dbUpdateUserProfile(userId, updatedProfile);
     }
+    const tDbTotal = tDb1 + (performance.now() - tDbStart2);
+    const tTotal = performance.now() - tTotalStart;
+
+    const timing = cleanAnalysis?.timing || {
+      atsAnalysis: 0,
+      sectionAnalysis: 0,
+      keywordAnalysis: 0,
+      improvementAnalysis: 0
+    };
+
+    console.log(`[ResumePipeline]
+Extraction: ${tExtraction.toFixed(2)}ms
+ATS Analysis: ${timing.atsAnalysis.toFixed(2)}ms
+Section Analysis: ${timing.sectionAnalysis.toFixed(2)}ms
+Keyword Analysis: ${timing.keywordAnalysis.toFixed(2)}ms
+Improvement Analysis: ${timing.improvementAnalysis.toFixed(2)}ms
+Job Matching: ${tMatching.toFixed(2)}ms
+Database Persistence: ${tDbTotal.toFixed(2)}ms
+Total: ${tTotal.toFixed(2)}ms`);
 
     return res.json({
       success: true,

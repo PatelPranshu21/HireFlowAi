@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ResumeAnalysisResult, ResumeVersion, UserProfile, ParsedResumeData, AiImprovementSuggestion } from '../types';
 import { useEcosystem } from '../context/EcosystemContext';
+import { checkEntitlement } from '../data/planConfig';
 import { 
   BarChart3, 
   Upload, 
@@ -95,6 +96,17 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
   };
 
   // Handlers
+  const handleOpenUploadModal = () => {
+    const entitlement = checkEntitlement(user, 'resumeUploads');
+    if (!entitlement.allowed) {
+      if ((window as any).__showLimitReachedModal) {
+        (window as any).__showLimitReachedModal(entitlement);
+        return;
+      }
+    }
+    setIsUploadModalOpen(true);
+  };
+
   const handleSaveParsedResume = async (parsedData: ParsedResumeData, fileName: string, fileText: string) => {
     showToast(`Analyzing resume "${fileName}" with AI...`);
     await ecosystemUploadResume(fileText, fileName, parsedData);
@@ -215,7 +227,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsUploadModalOpen(true)}
+            onClick={handleOpenUploadModal}
             className="px-3 py-2 bg-[#282934] hover:bg-[#32343f] text-[#e1e1ef] rounded-xl text-xs font-mono font-medium border border-[#434656]/30 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#b7c4ff]" />
@@ -278,7 +290,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
             </p>
             <div className="flex flex-wrap gap-3 justify-center">
               <button
-                onClick={() => setIsUploadModalOpen(true)}
+                onClick={handleOpenUploadModal}
                 className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-mono font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -321,7 +333,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
                     setActiveTab(tab as any);
                   }
                 }}
-                onOpenUpload={() => setIsUploadModalOpen(true)}
+                onOpenUpload={handleOpenUploadModal}
                 onApplyImprovement={(id) => {
                   const sug = (analysis.aiSuggestions || []).find(s => s.id === id);
                   if (sug) handleAcceptAiSuggestion(sug);
@@ -376,7 +388,7 @@ export const ResumeSuiteView: React.FC<ResumeSuiteViewProps> = ({
                 onRenameVersion={handleRenameVersion}
                 onDeleteVersion={handleDeleteVersion}
                 onDownloadVersion={(v, fmt) => handleDownloadVersion(v, fmt)}
-                onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                onOpenUploadModal={handleOpenUploadModal}
               />
             )}
 

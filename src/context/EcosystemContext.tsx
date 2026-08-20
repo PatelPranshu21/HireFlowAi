@@ -487,7 +487,7 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
     setIsAnalyzingResume(true);
     const newVersionId = `v_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-    // 1. First save to DB with initial extracted text and parsedData so resume and resume_version records exist
+    // 1. Single unified API call that parses, analyzes, scores, and matches jobs in one transaction
     const uploadRes = await UserService.uploadResumeApi({
       fileName,
       fileText,
@@ -497,44 +497,32 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       score: 0
     });
 
-    // 2. Perform dynamic AI resume analysis
-    let analysisResult: ResumeAnalysisResult | null = null;
-    try {
-      analysisResult = await AiProviderService.analyzeResume(fileText, profile.targetRole || "Software Engineer", newVersionId);
-    } catch (err) {
-      console.error("Analysis call failed:", err);
-    }
-
-    if (!analysisResult || analysisResult.overallScore === 0) {
-      if (uploadRes?.analysisData && uploadRes.analysisData.overallScore > 0) {
-        analysisResult = uploadRes.analysisData;
-      } else {
-        analysisResult = defaultResumeAnalysis;
+    if (!uploadRes.success) {
+      setIsAnalyzingResume(false);
+      if (uploadRes.error === 'limit_reached') {
+        const err = new Error('LIMIT_REACHED');
+        (err as any).details = uploadRes.details;
+        throw err;
       }
+      throw new Error(uploadRes.error || 'Failed to upload resume. Please try again.');
     }
 
-    if (analysisResult.overallScore > 0) {
-      UserService.updateResumeVersionScoreApi(newVersionId, analysisResult.overallScore, analysisResult);
+    let analysisResult: ResumeAnalysisResult = defaultResumeAnalysis;
+    let newJobRecs: JobRecommendation[] = [];
+
+    if (uploadRes?.analysisData && uploadRes.analysisData.overallScore > 0) {
+      analysisResult = uploadRes.analysisData;
+    }
+
+    // The backend /api/auth/resume endpoint computes and returns job matches
+    if ((uploadRes as any)?.jobRecommendations) {
+      newJobRecs = (uploadRes as any).jobRecommendations;
     }
 
     setCurrentAnalysis(analysisResult);
     setActiveResumeVersionId(newVersionId);
 
     const newSkills = parsedData?.skills || analysisResult.keywordList?.filter(k => k.detected && k.foundInResume).map(k => k.keyword) || profile.skills;
-
-    // 3. Match resume against jobs and persist strictly for this newVersionId
-    let newJobRecs: JobRecommendation[] = [];
-    try {
-      const apiMatches = await UserService.matchResumeJobsApi({
-        resumeVersionId: newVersionId,
-        resumeText: fileText,
-        skills: newSkills,
-        targetRole: parsedData?.targetRole || profile.targetRole || "Software Engineer"
-      });
-      if (apiMatches && apiMatches.length > 0) {
-        newJobRecs = apiMatches;
-      }
-    } catch (e) {}
 
     // 4. Construct new version object
     const newVersionObj: ResumeVersion = {
@@ -599,24 +587,8 @@ export const EcosystemProvider: React.FC<{ children: React.ReactNode; onNavigate
       }
     } catch (e) {}
 
-    const versionSkills = version.parsedData?.skills || (version as any).analysisData?.keywordList?.filter((k: any) => k.detected).map((k: any) => k.keyword) || profile.skills;
-
-    // If no matches persisted yet, calculate and persist now
-    if (versionMatches.length === 0) {
-      try {
-        const calculated = await UserService.matchResumeJobsApi({
-          resumeVersionId: versionId,
-          resumeText: version.resumeText || version.content || '',
-          skills: versionSkills,
-          targetRole: profile.targetRole || "Software Engineer"
-        });
-        if (calculated && calculated.length > 0) {
-          versionMatches = calculated;
-        }
-      } catch (e) {}
-    }
-
-    setRecommendations(versionMatches);
+    // getJobMatchesApi already computes and persists matches on the backend if they are missing.
+    // No need to hit a second endpoint to compute them again.    setRecommendations(versionMatches);
 
     // 2. Check for cached analysis
     let cachedAnalysis = (version as any).analysisData;

@@ -1,9 +1,9 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 
-import dotenv from "dotenv";
 import { 
   initDb, 
   getPool,
@@ -11,7 +11,12 @@ import {
   dbSaveInterviewSession, 
   dbUpdateResumeVersionScore,
   dbSaveJobMatches,
-  dbGetJobMatchesForResumeVersion
+  dbGetJobMatchesForResumeVersion,
+  dbSaveSavedJob,
+  dbRemoveSavedJob,
+  dbIsJobSaved,
+  dbGetSavedJobsForUser,
+  dbGetUserSavedJobs
 } from "./src/db/postgres";
 import authRoutes, { verifyAuthHeader } from "./server/authRoutes";
 import { extractTextFromPayload, parseResumeDocument } from "./server/documentParser";
@@ -20,6 +25,7 @@ import { pool } from "./db";
 import { PLANS, PlanName, normalizeProfileSubscription } from "./src/data/planConfig";
 import { JobMatchingService, CANONICAL_SKILLS } from "./src/services/jobMatchingService";
 import { JobIngestionService } from "./server/jobIngestionService";
+import { ExternalJobFetcher } from "./server/externalJobFetcher";
 import { 
   resolveUserProfile, 
   enforceFeatureEntitlement, 
@@ -27,7 +33,6 @@ import {
   SubscriptionRequest 
 } from "./server/subscriptionMiddleware";
 
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -201,13 +206,17 @@ app.get("/api/health", (_req, res) => {
 
 // 1. Analyze Resume / ATS Scoring (Enforced for 'atsAnalyses')
 app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), async (req: SubscriptionRequest, res) => {
+  const tTotalStart = performance.now();
   try {
     const { resumeText: rawResumeText, fileData, fileName, targetRole, resumeVersionId } = req.body;
     if (!rawResumeText && !fileData) {
       return res.status(400).json({ error: "resumeText or fileData is required" });
     }
 
+    const tExtStart = performance.now();
     const docParse = await parseResumeDocument({ fileText: rawResumeText, fileData, fileName });
+    const tExtraction = performance.now() - tExtStart;
+
     if (!docParse.extractionSuccess || docParse.extractedTextLength === 0) {
       return res.status(422).json({
         error: docParse.error || "Text extraction failed. Unable to extract readable text.",
@@ -228,6 +237,7 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
       .filter((k: any) => k.detected && k.foundInResume)
       .map((k: any) => k.keyword);
 
+    const tMatchStart = performance.now();
     const availableJobs = await JobIngestionService.getAvailableJobs();
     const jobMatches = JobMatchingService.matchResumeAgainstJobs(
       resumeText,
@@ -235,7 +245,9 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
       availableJobs,
       targetRole || "Software Engineer"
     );
+    const tMatching = performance.now() - tMatchStart;
 
+    const tDbStart = performance.now();
     const effectiveUserId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
     console.log(`[RESUME ANALYSIS] resumeVersionId=${resumeVersionId || 'n/a'} userId=${effectiveUserId || 'guest'} score=${parsed.overallScore}`);
     if (effectiveUserId && effectiveUserId !== 'usr_guest') {
@@ -262,16 +274,36 @@ app.post("/api/ai/analyze-resume", enforceFeatureEntitlement('atsAnalyses'), asy
           match_score: m.matchScore,
           similarity_score: (m as any).similarityScore || 0,
           skill_match_score: (m as any).skillMatchScore || 0,
-          matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
-          missing_skills: m.missingSkills || [],
-          preferred_skills: [],
-          why_match: m.recommendationReason
+          matched_skills: (m as any).matchedSkills || [],
+          missing_skills: (m as any).missingSkills || [],
+          preferred_skills: (m as any).preferredSkills || [],
+          why_match: m.recommendationReason || (m as any).whyMatch || ''
         }));
         await dbSaveJobMatches(effectiveUserId, resumeVersionId, dbMatches);
       }
     }
-    
+    const tDb = performance.now() - tDbStart;
+
     await recordFeatureUsage(effectiveUserId || req.userId, req.userProfile, 'atsAnalyses', req.guestKey);
+
+    const tTotal = performance.now() - tTotalStart;
+    const timing = parsed.timing || {
+      atsAnalysis: 0,
+      sectionAnalysis: 0,
+      keywordAnalysis: 0,
+      improvementAnalysis: 0
+    };
+
+    console.log(`[ResumePipeline]
+Extraction: ${tExtraction.toFixed(2)}ms
+ATS Analysis: ${timing.atsAnalysis.toFixed(2)}ms
+Section Analysis: ${timing.sectionAnalysis.toFixed(2)}ms
+Keyword Analysis: ${timing.keywordAnalysis.toFixed(2)}ms
+Improvement Analysis: ${timing.improvementAnalysis.toFixed(2)}ms
+Job Matching: ${tMatching.toFixed(2)}ms
+Database Persistence: ${tDb.toFixed(2)}ms
+Total: ${tTotal.toFixed(2)}ms`);
+
     res.json({ ...parsed, jobRecommendations: jobMatches, extractedText: resumeText, text: resumeText });
   } catch (err: any) {
     console.error("Error in /api/ai/analyze-resume:", err);
@@ -320,6 +352,64 @@ app.post("/api/jobs/match-resume", async (req: SubscriptionRequest, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// DYNAMIC JOB INGESTION API ROUTES
+// -------------------------------------------------------------
+
+// Manual bulk JSON upload for jobs
+app.post("/api/admin/jobs/ingest", async (req, res) => {
+  try {
+    // Basic admin auth check could go here
+    const payload = req.body;
+    if (!Array.isArray(payload) || payload.length === 0) {
+      return res.status(400).json({ error: "Expected a non-empty JSON array of job objects." });
+    }
+
+    const normalizedJobs = ExternalJobFetcher.normalizeManualJobs(payload);
+    const { dbSaveJobs } = require('./src/db/postgres');
+    const savedCount = await dbSaveJobs(normalizedJobs);
+    
+    res.json({ success: true, ingested: savedCount, message: `Successfully ingested ${savedCount} jobs.` });
+  } catch (err: any) {
+    console.error("Error in /api/admin/jobs/ingest:", err);
+    res.status(500).json({ error: "Failed to ingest jobs", details: err.message });
+  }
+});
+
+// Manual trigger for Adzuna job ingestion pipeline
+app.post("/api/jobs/refresh", async (req: SubscriptionRequest, res) => {
+  try {
+    const stats = await JobIngestionService.refreshAdzunaJobs({
+      resultsPerPage: req.body?.resultsPerPage || 25,
+      maxPagesPerQuery: req.body?.maxPagesPerQuery || 1,
+      queries: req.body?.queries,
+      expireStale: req.body?.expireStale !== false
+    });
+    res.json({
+      success: true,
+      stats,
+      message: `Refreshed Adzuna jobs: ${stats.inserted} inserted, ${stats.updated} updated, ${stats.skipped} skipped, ${stats.expired} expired.`
+    });
+  } catch (err: any) {
+    console.error("Error in /api/jobs/refresh:", err);
+    res.status(500).json({ error: "Failed to refresh Adzuna jobs", details: err.message });
+  }
+});
+
+// Trigger external API job fetch
+app.post("/api/admin/jobs/trigger-fetch", async (req, res) => {
+  try {
+    const stats = await JobIngestionService.refreshAdzunaJobs({
+      resultsPerPage: req.body?.resultsPerPage || 25,
+      maxPagesPerQuery: req.body?.maxPagesPerQuery || 1
+    });
+    res.json({ success: true, stats, message: `Successfully fetched and updated Adzuna jobs.` });
+  } catch (err: any) {
+    console.error("Error in /api/admin/jobs/trigger-fetch:", err);
+    res.status(500).json({ error: "Failed to trigger job fetch", details: err.message });
+  }
+});
+
 // 2b. Get Persisted Job Matches for Specific Resume Version
 app.get("/api/jobs/matches/:resumeVersionId", async (req: SubscriptionRequest, res) => {
   try {
@@ -353,10 +443,10 @@ app.get("/api/jobs/matches/:resumeVersionId", async (req: SubscriptionRequest, r
         match_score: m.matchScore,
         similarity_score: (m as any).similarityScore || 0,
         skill_match_score: (m as any).skillMatchScore || 0,
-        matched_skills: (m as any).matchedSkills || m.requiredSkills || [],
-        missing_skills: m.missingSkills || [],
-        preferred_skills: [],
-        why_match: m.recommendationReason
+        matched_skills: (m as any).matchedSkills || [],
+        missing_skills: (m as any).missingSkills || [],
+        preferred_skills: (m as any).preferredSkills || [],
+        why_match: m.recommendationReason || (m as any).whyMatch || ''
       }));
       await dbSaveJobMatches(userId, resumeVersionId, dbMatches);
     }
@@ -365,6 +455,91 @@ app.get("/api/jobs/matches/:resumeVersionId", async (req: SubscriptionRequest, r
   } catch (err: any) {
     console.error("Error in GET /api/jobs/matches/:resumeVersionId:", err);
     res.status(500).json({ error: "Failed to fetch job matches", details: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// PERSISTENT SAVED JOBS REST APIS
+// -------------------------------------------------------------
+
+// POST /api/jobs/:jobId/save - Save job for authenticated user
+app.post("/api/jobs/:jobId/save", async (req: SubscriptionRequest, res) => {
+  try {
+    const userId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
+    if (!userId || userId === 'usr_guest') {
+      return res.status(401).json({ error: "Unauthorized: Please log in to save jobs." });
+    }
+
+    const { jobId } = req.params;
+    if (!jobId) {
+      return res.status(400).json({ error: "jobId parameter is required" });
+    }
+
+    const result = await dbSaveSavedJob(userId, jobId);
+    if (!result.success) {
+      return res.status(result.error === 'Job not found in catalog' ? 404 : 500).json({
+        error: result.error || "Failed to save job",
+        saved: false
+      });
+    }
+
+    return res.json({ success: true, saved: true, jobId });
+  } catch (err: any) {
+    console.error("Error in POST /api/jobs/:jobId/save:", err);
+    res.status(500).json({ error: "Failed to save job", details: err.message });
+  }
+});
+
+// DELETE /api/jobs/:jobId/save - Unsave job for authenticated user
+app.delete("/api/jobs/:jobId/save", async (req: SubscriptionRequest, res) => {
+  try {
+    const userId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
+    if (!userId || userId === 'usr_guest') {
+      return res.status(401).json({ error: "Unauthorized: Please log in to manage saved jobs." });
+    }
+
+    const { jobId } = req.params;
+    if (!jobId) {
+      return res.status(400).json({ error: "jobId parameter is required" });
+    }
+
+    const result = await dbRemoveSavedJob(userId, jobId);
+    return res.json({ success: true, saved: false, jobId });
+  } catch (err: any) {
+    console.error("Error in DELETE /api/jobs/:jobId/save:", err);
+    res.status(500).json({ error: "Failed to unsave job", details: err.message });
+  }
+});
+
+// GET /api/jobs/saved - Return all jobs saved by authenticated user (joined with jobs table)
+app.get("/api/jobs/saved", async (req: SubscriptionRequest, res) => {
+  try {
+    const userId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
+    if (!userId || userId === 'usr_guest') {
+      return res.status(401).json({ error: "Unauthorized: Please log in to view saved jobs." });
+    }
+
+    const savedJobs = await dbGetSavedJobsForUser(userId);
+    return res.json({ success: true, jobs: savedJobs, count: savedJobs.length });
+  } catch (err: any) {
+    console.error("Error in GET /api/jobs/saved:", err);
+    res.status(500).json({ error: "Failed to fetch saved jobs", details: err.message });
+  }
+});
+
+// GET /api/jobs/:jobId/saved - Check if specific job is saved by authenticated user
+app.get("/api/jobs/:jobId/saved", async (req: SubscriptionRequest, res) => {
+  try {
+    const userId = req.userId || req.userProfile?.id || verifyAuthHeader(req);
+    if (!userId || userId === 'usr_guest') {
+      return res.json({ success: true, jobId: req.params.jobId, saved: false });
+    }
+
+    const isSaved = await dbIsJobSaved(userId, req.params.jobId);
+    return res.json({ success: true, jobId: req.params.jobId, saved: isSaved });
+  } catch (err: any) {
+    console.error("Error in GET /api/jobs/:jobId/saved:", err);
+    res.status(500).json({ error: "Failed to check saved status", details: err.message });
   }
 });
 
@@ -464,7 +639,7 @@ app.post("/api/ai/match-job", enforceFeatureEntitlement('jobMatchAnalyses'), asy
 });
 
 // 2b. AI Structured Resume Parsing
-app.post("/api/ai/parse-resume", async (req, res) => {
+app.post("/api/ai/parse-resume", enforceFeatureEntitlement('atsAnalyses'), async (req: SubscriptionRequest, res) => {
   try {
     const { resumeText: rawText, fileData, fileName } = req.body;
     if (!rawText && !fileData) {
@@ -797,6 +972,33 @@ async function startServer() {
     }
   } catch (err) {
     console.error('[Startup] Error purging orphaned job_matches:', err);
+  }
+
+  // Setup safe Adzuna startup diagnostics & background job synchronization
+  const hasAppId = Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_ID.trim().length > 0);
+  const hasAppKey = Boolean(process.env.ADZUNA_APP_KEY && process.env.ADZUNA_APP_KEY.trim().length > 0);
+  const country = process.env.ADZUNA_COUNTRY || 'in';
+
+  console.log(`[Adzuna] APP_ID configured: ${hasAppId}`);
+  console.log(`[Adzuna] APP_KEY configured: ${hasAppKey}`);
+  console.log(`[Adzuna] COUNTRY: ${country}`);
+
+  if (hasAppId && hasAppKey) {
+    console.log('[Startup] Adzuna API credentials active. Starting background job synchronization.');
+    // Run initial sync in background
+    setTimeout(() => {
+      JobIngestionService.refreshAdzunaJobs({ country, resultsPerPage: 25, maxPagesPerQuery: 1 }).catch(e => console.error('[Background Sync] Error:', e?.message || e));
+    }, 5000);
+    
+    // Schedule daily sync (every 24 hours)
+    if (!(global as any).__adzunaInterval) {
+      (global as any).__adzunaInterval = setInterval(() => {
+        console.log('[Background Sync] Running daily Adzuna job fetch...');
+        JobIngestionService.refreshAdzunaJobs({ country, resultsPerPage: 25, maxPagesPerQuery: 1, expireStale: true }).catch(e => console.error('[Background Sync] Error:', e?.message || e));
+      }, 24 * 60 * 60 * 1000);
+    }
+  } else {
+    console.warn('[Adzuna] Ingestion skipped: ADZUNA_APP_ID and/or ADZUNA_APP_KEY is missing in backend environment. No mock jobs will be generated.');
   }
 
   if (process.env.NODE_ENV !== "production") {
